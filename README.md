@@ -63,12 +63,25 @@ Phase 3 の完了後、WinUI 3 へ移行したうえで外観と操作性を実�
 dotnet build TouchKeyboard.slnx
 ```
 
-続けて、管理者として開いた PowerShell で配置する。証明書の作成・登録、署名、配置、起動までを行う。
+続けて、管理者として開いた PowerShell で配置する。証明書の作成・登録、署名、配置、起動までを行う（開発中の反復用。ビルドのたびに実行する）。
 
 ```
 powershell -ExecutionPolicy Bypass -File tools\install-dev.ps1
 ```
 
-最終版ではこの処理をインストーラーに移す。
+配布用には MSI を使う。`installer\build-msi.ps1` が publish・署名・証明書の書き出し・`TouchKeyboard.msi` の生成までを行う（管理者権限は不要）。
+
+```
+powershell -ExecutionPolicy Bypass -File installer\build-msi.ps1
+```
+
+できた `installer\TouchKeyboard.msi` をダブルクリックしてインストールする（ここは管理者権限を要求される）。`Program Files` への配置、署名用証明書のこの PC への信頼登録、スタートメニューへの登録、「アプリと機能」への登録までを行う。取り除くときは「設定」>「アプリ」>「インストールされているアプリ」から「TouchKeyboard」を選ぶ。
+
+初回のみ、WiX Toolset が必要。
+
+```
+dotnet tool install --global wix
+wix extension add WixToolset.Util.wixext
+```
 
 事前に OS 標準タッチキーボードの自動表示を止めておくこと（[docs/requirements.md](docs/requirements.md) 9 章）。

@@ -12,12 +12,6 @@
 
 外部ディスプレイ接続時の挙動が未検証（`development-plan.md` Phase 3 参照）。実機で確認したうえで、ドッキング先モニタの選択 UI が現状のトレイメニューで足りるかを判断する。
 
-### 3. インストーラー
-
-`uiAccess` の対応により、証明書の作成・登録と `Program Files` への配置が起動の前提になった。現在は `tools/install-dev.ps1` が開発用に行っている。最終版ではこれをインストーラーへ移す。
-
-正式配布するなら自己署名ではなく正規の証明書が要る。個人利用の範囲に留めるか、そこまで踏み込むかは未定。
-
 ---
 
 ## 決定済み
@@ -36,3 +30,4 @@
 | Fn キーの扱い | スキャンコードを送出せず、数字段を `Esc` / `F1`〜`F12` / `Del` に切り替えるアプリ内部の機能 | `layouts/jis-full.json` |
 | 自動表示時の AppBar | 隠すたびに `ABM_REMOVE`、表示で `ABM_NEW`。フォーカス移動の連発に備えデバウンスする（Phase 4） | `Views/DockManager.cs` |
 | .NET のバージョン | `net10.0-windows`。選定理由（Per-Monitor DPI V2）は .NET 10 でも満たされ、開発機に .NET 8 ランタイムが無く、.NET 10 は LTS | `TouchKeyboard.csproj` |
+| インストーラー | 自己署名証明書のまま、個人利用の範囲に留める。WiX Toolset で MSI を作る。`installer/build-msi.ps1` が publish・署名・証明書書き出し・MSI ビルドまでを行い、`installer/TouchKeyboard.wxs` が配置・証明書の信頼登録（インストール時のカスタムアクション）・スタートメニュー登録・「アプリと機能」への登録を定義する。アンインストールは Windows の標準機能（設定 > アプリ）に任せ、専用スクリプトは持たない | `installer/TouchKeyboard.wxs`, `installer/build-msi.ps1` |

@@ -148,7 +148,7 @@ WinUI 3 では `DesktopAcrylicController` の `SystemBackdropConfiguration.IsInp
 - 実行ファイルが Authenticode 署名済みであること
 - `Program Files` 配下など、信頼された場所から起動されること
 
-このためビルド結果を直接実行できない。開発中は `tools/install-dev.ps1` が署名と配置を行う。最終版ではインストーラーに移す（`open-questions.md`）。
+このためビルド結果を直接実行できない。開発中の反復には `tools/install-dev.ps1` を使う。配布用には `installer/build-msi.ps1` が作る `installer/TouchKeyboard.msi` を使う。MSI が署名済み実行ファイルの配置、証明書の信頼登録、スタートメニュー登録、「アプリと機能」への登録、アンインストールまで面倒を見る。
 
 ### スキャンコードの解釈は OS のキーボードレイアウトに依存する
 

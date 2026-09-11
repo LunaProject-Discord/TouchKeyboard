@@ -17,3 +17,10 @@ publish/
 *.cer
 *.snk
 *.pvk
+
+# installer/ の生成物。build-msi.ps1 が毎回作り直す
+installer/*.msi
+installer/*.wixpdb
+installer/Files.wxs
+installer/*.log
+installer/.wix/
