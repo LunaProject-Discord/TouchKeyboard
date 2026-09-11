@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+
+  <assemblyIdentity version="1.0.0.0" name="TouchKeyboard.app" />
+
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <!--
+          支援技術としての権限。スクリーンキーボードは Windows が想定している用途。
+
+          これにより 2 つの制限が外れる。
+            - シェルより上の Z 順バンドに入る。タスクバーやスタートメニューの下に潜らない
+            - UIPI を越えて昇格アプリへも SendInput できる（タスクマネージャ、regedit 等）
+
+          代償として起動条件が厳しくなる。次の両方を満たさないと起動に失敗する。
+            - 実行ファイルが Authenticode 署名済みであること
+            - Program Files 配下など、信頼された場所から起動されること
+
+          このため出力ディレクトリから直接実行することはできない。
+          tools/install-dev.ps1 で署名して配置すること。
+        -->
+        <requestedExecutionLevel level="asInvoker" uiAccess="true" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />
+    </application>
+  </compatibility>
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <!--
+        Per-Monitor DPI Awareness V2（要件 7 非機能要件）。
+        モニタ間移動とスケーリング変更でレイアウトとドッキング位置が破綻しないために必須。
+        dpiAware はこれを解さない古い OS 向けのフォールバック。
+      -->
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+    </windowsSettings>
+  </application>
+
+</assembly>

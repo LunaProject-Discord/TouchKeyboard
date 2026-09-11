@@ -1,0 +1,170 @@
+{
+  // クラシック。物理の JIS 109 配列をそのまま並べたもの。
+  // ファンクション段があるため、Fn で数字段を F1〜F12 に読み替えることはしない。
+  // 同じキーが 2 か所にある状態になり、どちらを押せばよいか分からなくなる。
+  //
+  // 英字は物理のキーと同じく大文字で刻む。実際に出る字は Shift の状態で決まり、
+  // 刻印は変わらない。小文字で出して Shift で入れ替えるのは標準のタッチキーボードの
+  // 流儀で、そちらはモダンに残してある。
+  //
+  // かなの字は刻まない。手元の実機（JIS 109）に刻印が無いため、それに合わせる。
+  // ただし句読点と鉤括弧（、。・「」）は実機にも刻まれているので kanaShift に置く。
+  // かなの字ごと刻む場合は kana をキーごとに書く。描画側は 4 隅に分けて置く。
+  "name": "クラシック",
+  "rowUnits": 15.5,
+
+  // Shift 側の記号は基の字の真上に積む。物理のキーの刻み方。
+  "stackedLabels": true,
+
+  // 盤を小さくするとファンクション段が先に読めなくなる。
+  // 他の段の半分の高さしかないため。そのときはこの派生に差し替える。
+  "compactAlternative": "modern.json",
+
+  "rows": [
+    {
+      "height": 0.5,
+
+      // 物理のキーボードと同じく 4 つずつに区切る。
+      // 隙間は 0.25 ユニット。Esc と Delete をそのぶん詰めて 1.25 とし、
+      // F1〜F12 は 1 ユニットのまま数字段の上に並ぶようにしてある。
+      // Esc は 半角/全角 の、Delete は BS の真上に来る。
+      "keys": [
+        { "label": "Esc", "scanCode": "0x01", "width": 1.25, "repeatable": false, "tone": "modifier" },
+        { "label": "", "scanCode": "0x00", "spacer": true, "width": 0.25 },
+        { "label": "F1", "scanCode": "0x3B", "tone": "modifier" },
+        { "label": "F2", "scanCode": "0x3C", "tone": "modifier" },
+        { "label": "F3", "scanCode": "0x3D", "tone": "modifier" },
+        { "label": "F4", "scanCode": "0x3E", "tone": "modifier" },
+        { "label": "", "scanCode": "0x00", "spacer": true, "width": 0.25 },
+        { "label": "F5", "scanCode": "0x3F", "tone": "modifier" },
+        { "label": "F6", "scanCode": "0x40", "tone": "modifier" },
+        { "label": "F7", "scanCode": "0x41", "tone": "modifier" },
+        { "label": "F8", "scanCode": "0x42", "tone": "modifier" },
+        { "label": "", "scanCode": "0x00", "spacer": true, "width": 0.25 },
+        { "label": "F9", "scanCode": "0x43", "tone": "modifier" },
+        { "label": "F10", "scanCode": "0x44", "tone": "modifier" },
+        { "label": "F11", "scanCode": "0x57", "tone": "modifier" },
+        { "label": "F12", "scanCode": "0x58", "tone": "modifier" },
+        { "label": "", "scanCode": "0x00", "spacer": true, "width": 0.25 },
+        { "label": "Delete", "scanCode": "0x53", "extended": true, "width": 1.25, "tone": "modifier" }
+      ]
+    },
+    {
+      "keys": [
+        // 物理のキーと同じ印字。罫線の行は線として引かれる。
+        //
+        // faceOffset は実測値。この盤を撮って字の墨の位置を測ったところ、
+        // 段を積んだ印字は中央より 2.75 ユニット下にあった（字 16 に対する割合で -0.17）。
+        // 行の高さを指定した行では、字がその高さの下端に置かれるために起きる。
+        { "label": "半角\n全角\n――\n漢字", "scanCode": "0x29", "width": 1.25, "repeatable": false, "tone": "modifier", "faceOffset": -0.17 },
+        { "label": "1", "shiftLabel": "!", "scanCode": "0x02" },
+        { "label": "2", "shiftLabel": "\"", "scanCode": "0x03" },
+        { "label": "3", "shiftLabel": "#", "scanCode": "0x04" },
+        { "label": "4", "shiftLabel": "$", "scanCode": "0x05" },
+        { "label": "5", "shiftLabel": "%", "scanCode": "0x06" },
+        { "label": "6", "shiftLabel": "&", "scanCode": "0x07" },
+        { "label": "7", "shiftLabel": "'", "scanCode": "0x08" },
+        { "label": "8", "shiftLabel": "(", "scanCode": "0x09" },
+        { "label": "9", "shiftLabel": ")", "scanCode": "0x0A" },
+        { "label": "0", "scanCode": "0x0B" },
+        { "label": "-", "shiftLabel": "=", "scanCode": "0x0C" },
+        { "label": "^", "shiftLabel": "~", "scanCode": "0x0D" },
+        { "label": "¥", "shiftLabel": "|", "scanCode": "0x7D" },
+        { "label": "BS", "icon": "E750", "iconOnly": true, "scanCode": "0x0E", "width": 1.25, "tone": "modifier" }
+      ]
+    },
+    {
+      "keys": [
+        // Tab のアイコン（E7FD）は行の下側に余白を持つ字形で、実測では
+        // 行の上に 5、下に 8 の空きがあった。そのぶん印字が上に寄るので下げる。
+        // アイコンだけのときは差の半分（0.05）、字と積むときは下の空きの半分（0.125）。
+        // 同じアイコンでも Shift（E752）は行いっぱいに描かれ、ずれない。字形ごとの差。
+        { "label": "Tab", "icon": "E7FD", "scanCode": "0x0F", "width": 1.75, "tone": "modifier", "faceOffset": 0.05, "pairedFaceOffset": 0.125 },
+        { "label": "Q", "shiftLabel": "Q", "scanCode": "0x10" },
+        { "label": "W", "shiftLabel": "W", "scanCode": "0x11" },
+        { "label": "E", "shiftLabel": "E", "scanCode": "0x12" },
+        { "label": "R", "shiftLabel": "R", "scanCode": "0x13" },
+        { "label": "T", "shiftLabel": "T", "scanCode": "0x14" },
+        { "label": "Y", "shiftLabel": "Y", "scanCode": "0x15" },
+        { "label": "U", "shiftLabel": "U", "scanCode": "0x16" },
+        { "label": "I", "shiftLabel": "I", "scanCode": "0x17" },
+        { "label": "O", "shiftLabel": "O", "scanCode": "0x18" },
+        { "label": "P", "shiftLabel": "P", "scanCode": "0x19" },
+        { "label": "@", "shiftLabel": "`", "scanCode": "0x1A" },
+        { "label": "[", "shiftLabel": "{", "scanCode": "0x1B", "kanaShift": "「" },
+        // 字は下段に持たせる。上段に置くと、繋がった中央へ寄せた字面のうち
+        // 下段へはみ出した部分が、後から描かれる下段の塗りに隠れる。
+        { "label": "Enter", "icon": "E751", "scanCode": "0x1C", "width": 1.75, "mergeDown": true, "hideFace": true, "tone": "modifier" }
+      ]
+    },
+    {
+      "keys": [
+        { "label": "Caps", "scanCode": "0x3A", "width": 2.0, "repeatable": false, "tone": "modifier", "isCapsLock": true },
+        { "label": "A", "shiftLabel": "A", "scanCode": "0x1E" },
+        { "label": "S", "shiftLabel": "S", "scanCode": "0x1F" },
+        { "label": "D", "shiftLabel": "D", "scanCode": "0x20" },
+        { "label": "F", "shiftLabel": "F", "scanCode": "0x21" },
+        { "label": "G", "shiftLabel": "G", "scanCode": "0x22" },
+        { "label": "H", "shiftLabel": "H", "scanCode": "0x23" },
+        { "label": "J", "shiftLabel": "J", "scanCode": "0x24" },
+        { "label": "K", "shiftLabel": "K", "scanCode": "0x25" },
+        { "label": "L", "shiftLabel": "L", "scanCode": "0x26" },
+        { "label": ";", "shiftLabel": "+", "scanCode": "0x27" },
+        { "label": ":", "shiftLabel": "*", "scanCode": "0x28" },
+        { "label": "]", "shiftLabel": "}", "scanCode": "0x2B", "kanaShift": "」" },
+        { "label": "Enter", "icon": "E751", "scanCode": "0x1C", "width": 1.5, "mergeUp": true, "tone": "modifier" }
+      ]
+    },
+    {
+      "keys": [
+        { "label": "Shift", "icon": "E752", "scanCode": "0x2A", "width": 2.5, "modifier": "Shift" },
+        { "label": "Z", "shiftLabel": "Z", "scanCode": "0x2C" },
+        { "label": "X", "shiftLabel": "X", "scanCode": "0x2D" },
+        { "label": "C", "shiftLabel": "C", "scanCode": "0x2E" },
+        { "label": "V", "shiftLabel": "V", "scanCode": "0x2F" },
+        { "label": "B", "shiftLabel": "B", "scanCode": "0x30" },
+        { "label": "N", "shiftLabel": "N", "scanCode": "0x31" },
+        { "label": "M", "shiftLabel": "M", "scanCode": "0x32" },
+        { "label": ",", "shiftLabel": "<", "scanCode": "0x33", "kanaShift": "、" },
+        { "label": ".", "shiftLabel": ">", "scanCode": "0x34", "kanaShift": "。" },
+        { "label": "/", "shiftLabel": "?", "scanCode": "0x35", "kanaShift": "・" },
+        { "label": "\\", "shiftLabel": "_", "scanCode": "0x73" },
+        { "label": "Shift", "icon": "E752", "scanCode": "0x36", "width": 2.0, "modifier": "Shift" }
+      ]
+    },
+    {
+      "height": 0.5,
+      "rowSpan": 2,
+      "keys": [
+        { "label": "Ctrl", "scanCode": "0x1D", "modifier": "Ctrl" },
+        { "label": "Fn", "scanCode": "0x00", "modifier": "Fn" },
+        { "label": "Win", "isWindowsLogo": true, "iconOnly": true, "scanCode": "0x5B", "extended": true, "modifier": "Win" },
+        { "label": "Alt", "scanCode": "0x38", "modifier": "Alt" },
+        { "label": "無変換", "scanCode": "0x7B", "repeatable": false, "tone": "modifier" },
+        { "label": "", "scanCode": "0x39", "width": 3.5 },
+        { "label": "変換", "scanCode": "0x79", "repeatable": false, "tone": "modifier" },
+        { "label": "かな", "scanCode": "0x70", "repeatable": false, "tone": "modifier" },
+        { "label": "Alt", "scanCode": "0x38", "extended": true, "modifier": "Alt" },
+        { "label": "Ctrl", "scanCode": "0x1D", "extended": true, "modifier": "Ctrl" },
+        { "label": "", "scanCode": "0x00", "spacer": true, "width": 3.0 }
+      ]
+    },
+    {
+      "overlayPrevious": true,
+      "keys": [
+        { "label": "", "scanCode": "0x00", "spacer": true, "width": 13.5 },
+        { "label": "↑", "icon": "E70E", "scanCode": "0x48", "extended": true, "tone": "modifier" },
+        { "label": "", "scanCode": "0x00", "spacer": true }
+      ]
+    },
+    {
+      "height": 0.5,
+      "keys": [
+        { "label": "", "scanCode": "0x00", "spacer": true, "width": 12.5 },
+        { "label": "←", "icon": "E76B", "scanCode": "0x4B", "extended": true, "tone": "modifier" },
+        { "label": "↓", "icon": "E70D", "scanCode": "0x50", "extended": true, "tone": "modifier" },
+        { "label": "→", "icon": "E76C", "scanCode": "0x4D", "extended": true, "tone": "modifier" }
+      ]
+    }
+  ]
+}

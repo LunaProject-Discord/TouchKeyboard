@@ -1,0 +1,75 @@
+<Window x:Class="TouchKeyboard.Views.KeyboardWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="TouchKeyboard"
+        Height="360" Width="1100"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Focusable="False"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        FontFamily="Segoe UI Variable Text, Segoe UI, Yu Gothic UI"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType">
+
+    <!--
+        キーはここに直書きしない（絶対制約 4）。
+        layouts/jis-full.json を LayoutLoader が読み、コードから流し込む。
+    -->
+    <Grid Margin="6,0,6,6">
+        <Grid.RowDefinitions>
+            <!-- 高さ変更用のドラッグハンドル -->
+            <RowDefinition Height="14" />
+            <!-- ヘッダー。標準タッチキーボードと同じく上部に置く -->
+            <RowDefinition Height="28" />
+            <!-- キー段。残り全体を占め、行は均等に分ける -->
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--
+            上端をドラッグして高さを変える。指で掴めるよう十分な高さを取り、
+            背景を透明にして当たり判定だけ残す。
+        -->
+        <Border x:Name="ResizeGrip" Grid.Row="0"
+                Background="Transparent"
+                Cursor="SizeNS"
+                Stylus.IsPressAndHoldEnabled="False"
+                PreviewTouchDown="Grip_TouchDown"
+                PreviewTouchMove="Grip_TouchMove"
+                PreviewTouchUp="Grip_TouchUp"
+                PreviewMouseLeftButtonDown="Grip_MouseDown"
+                PreviewMouseMove="Grip_MouseMove"
+                PreviewMouseLeftButtonUp="Grip_MouseUp">
+            <Border x:Name="GripBar"
+                    Width="44" Height="4" CornerRadius="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    IsHitTestVisible="False" />
+        </Border>
+
+        <Grid Grid.Row="1" Margin="4,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="LogText" Grid.Column="0"
+                       FontSize="11"
+                       Margin="2,0" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" />
+
+            <Border x:Name="QuitButton" Grid.Column="1"
+                    CornerRadius="4" Width="36" Height="24"
+                    Background="Transparent" BorderThickness="0"
+                    Stylus.IsPressAndHoldEnabled="False"
+                    PreviewTouchDown="Quit_Down" PreviewMouseLeftButtonDown="Quit_Down">
+                <TextBlock Text="&#x2715;" FontSize="12"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           IsHitTestVisible="False" />
+            </Border>
+        </Grid>
+
+        <Grid x:Name="KeyRoot" Grid.Row="2" />
+    </Grid>
+</Window>

@@ -1,0 +1,221 @@
+<Window
+    x:Class="TouchKeyboard.Views.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tk="using:CommunityToolkit.WinUI.Controls">
+
+    <!--
+        Windows の設定と同じ組み方にする。左に分類、右に選んだ分類の中身。
+        分類ごとにページを切り替える形で、一枚に全部を並べて送るのとは違う。
+
+        書体は指定しない。Windows の既定に従う。同梱のフォントを使うのは盤の中だけ。
+    -->
+    <!--
+        背景は透明にする。既定のままだと不透明な塗りが乗り、Mica が透けない。
+        NavigationView も自前で背景を塗るコントロールなので、同じく透明にする。
+    -->
+    <Grid x:Name="Root" Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--
+            背の高いタイトルバー（48）。中身をここまで広げ、この帯を掴む場所として渡す。
+
+            高さは明示する。WinUI Gallery の TitleBarWindow サンプルは明示していないが、
+            SettingsWindow.xaml.cs 側で PreferredHeightOption を SetTitleBar より先に
+            設定する順序に直したうえで Height なしを試しても、実機では低いままだった。
+            PreferredHeightOption は AppWindow 側（最小化・最大化・閉じるボタンの高さなど、
+            OS が描く非クライアント領域）を決めるだけで、こちら側の XAML の行の高さには
+            効かないと判断し、48 を明示する方針に確定する。
+
+            折りたたみボタンは WinUI 純正の TitleBar が持つもの（IsPaneToggleButtonVisible /
+            PaneToggleRequested）を使う。タイトルバー領域に自前の Button を置いて
+            InputNonClientPointerSource で穴あけする方式を試したが、タッチが素通りせず
+            ボタンまで届かなかった。TitleBar はこの用途のための部品で、
+            自前の細工なしにドラッグ判定と両立する。
+        -->
+        <TitleBar x:Name="AppTitleBar"
+                  Grid.Row="0"
+                  Height="48"
+                  Title="TouchKeyboard の設定"
+                  IsPaneToggleButtonVisible="True"
+                  PaneToggleRequested="AppTitleBar_PaneToggleRequested">
+            <TitleBar.IconSource>
+                <FontIconSource Glyph="&#xE765;" />
+            </TitleBar.IconSource>
+        </TitleBar>
+
+        <NavigationView x:Name="Nav"
+                        Grid.Row="1"
+                        Background="Transparent"
+                        PaneDisplayMode="Left"
+                        OpenPaneLength="320"
+                        IsSettingsVisible="False"
+                        IsBackButtonVisible="Collapsed"
+                        IsPaneToggleButtonVisible="False">
+
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="表示" Tag="display" IsSelected="True">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE7F4;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+
+                <NavigationViewItem Content="自動表示" Tag="autoShow">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE890;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+
+                <NavigationViewItem Content="キー入力" Tag="keys">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE765;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+
+                <NavigationViewItem Content="その他" Tag="other">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE90F;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+
+            <!--
+                横方向の送りは切る。切らないと、中身を測るときの幅が無限として渡り、
+                列は伸びずに札ごとの必要な幅で決まる。札の幅が中身によってばらつく。
+                切れば窓の幅で測られ、どの札も列いっぱいに揃う。
+            -->
+            <ScrollViewer x:Name="ContentScroll"
+                          HorizontalScrollMode="Disabled"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+                <!--
+                    幅は指定に任せず、コード側で決める（ApplyContentWidth）。
+
+                    引き伸ばす指定と幅の上限を組み合わせると、上限に達したあとの
+                    位置が窓の大きさによって変わり、実測では右へ寄って端が切れていた。
+                    中央寄せの指定にすると、幅がそのページの中身で決まり、
+                    ページごとに違う幅になった（表示 672、自動表示 627、その他 367 DIP）。
+
+                    送り枠の見えている幅から毎回計算して入れる。どのページでも同じ幅で、
+                    位置も必ず中央になる。
+                -->
+                <StackPanel x:Name="PageContent" HorizontalAlignment="Center" Margin="0,20,0,32">
+
+                    <TextBlock x:Name="PageTitle"
+                               Style="{StaticResource TitleTextBlockStyle}"
+                               Margin="0,0,0,20" />
+
+                    <!-- 表示 -->
+                    <StackPanel x:Name="DisplaySection" Spacing="4">
+                        <tk:SettingsCard Header="キー配列"
+                                         Description="クラシックは物理の JIS 109 配列そのまま。モダンはファンクション段を省き、Esc を半角/全角の位置に、F1〜F12 を Fn + 数字に置きます。">
+                            <ComboBox x:Name="LayoutCombo" MinWidth="220" />
+                        </tk:SettingsCard>
+
+                        <tk:SettingsCard Header="高さ"
+                                         Description="キーボードの高さ。画面の半分までに制限されます。配列・浮かせているか・モニタ・画面の向きごとに別々に覚えます。">
+                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <TextBlock x:Name="HeightValue" VerticalAlignment="Center" MinWidth="64"
+                                           HorizontalTextAlignment="Right" />
+                                <Slider x:Name="HeightSlider" Width="220"
+                                        StepFrequency="4" TickFrequency="40"
+                                        VerticalAlignment="Center" />
+                            </StackPanel>
+                        </tk:SettingsCard>
+
+                        <tk:SettingsCard Header="タスクバーを覆う"
+                                         Description="画面下端まで広げます。確保する作業領域は変わりません。">
+                            <ToggleSwitch x:Name="CoverTaskbarToggle" />
+                        </tk:SettingsCard>
+
+                        <tk:SettingsCard Header="ドッキング先"
+                                         Description="キーボードを表示するモニタ。">
+                            <ComboBox x:Name="MonitorCombo" MinWidth="220" />
+                        </tk:SettingsCard>
+
+                        <tk:SettingsCard Header="背景の素材"
+                                         Description="標準タッチキーボードは Acrylic を使っています。Mica は壁紙を素材にするため、下のウィンドウは見えません。">
+                            <ComboBox x:Name="BackdropCombo" MinWidth="220" />
+                        </tk:SettingsCard>
+                    </StackPanel>
+
+                    <!-- 自動表示 -->
+                    <StackPanel x:Name="AutoShowSection" Spacing="4" Visibility="Collapsed">
+                        <tk:SettingsCard Header="入力欄で自動表示"
+                                         Description="テキスト入力欄にフォーカスが移ったとき表示します。物理キーボードが使えるときとマウス操作のときは表示しません。">
+                            <ToggleSwitch x:Name="AutoShowToggle" />
+                        </tk:SettingsCard>
+
+                        <tk:SettingsExpander x:Name="RulesExpander"
+                                             Header="アプリごとの扱い"
+                                             Description="自動表示が起きたアプリは自動で一覧に追加されます。">
+                            <tk:SettingsExpander.Items>
+                                <tk:SettingsCard x:Name="NoRulesCard"
+                                                 Header="まだ記録がありません"
+                                                 Description="入力欄にフォーカスを当てると、そのアプリがここに並びます。"
+                                                 IsEnabled="False" />
+                            </tk:SettingsExpander.Items>
+                        </tk:SettingsExpander>
+                    </StackPanel>
+
+                    <!-- キー入力 -->
+                    <StackPanel x:Name="KeysSection" Spacing="4" Visibility="Collapsed">
+                        <tk:SettingsExpander Header="長押しリピート"
+                                             Description="空欄にすると Windows の設定に従います。">
+                            <tk:SettingsExpander.Items>
+                                <tk:SettingsCard Header="開始までの時間"
+                                                 Description="ミリ秒。タッチは誤リピートしやすいため、既定は OS 設定より長めです。">
+                                    <NumberBox x:Name="RepeatDelayBox" MinWidth="140"
+                                               SpinButtonPlacementMode="Compact"
+                                               Minimum="200" Maximum="2000" SmallChange="50" />
+                                </tk:SettingsCard>
+
+                                <tk:SettingsCard Header="繰り返しの間隔" Description="ミリ秒。">
+                                    <NumberBox x:Name="RepeatIntervalBox" MinWidth="140"
+                                               SpinButtonPlacementMode="Compact"
+                                               Minimum="20" Maximum="500" SmallChange="10" />
+                                </tk:SettingsCard>
+                            </tk:SettingsExpander.Items>
+                        </tk:SettingsExpander>
+                    </StackPanel>
+
+                    <!-- その他 -->
+                    <StackPanel x:Name="OtherSection" Spacing="4" Visibility="Collapsed">
+                        <tk:SettingsCard Header="Windows 起動時に開始">
+                            <ToggleSwitch x:Name="AutoStartToggle" />
+                        </tk:SettingsCard>
+
+                        <tk:SettingsExpander Header="動作の記録"
+                                             Description="表示・非表示の判断を書き出します。不具合を追うときだけ有効にしてください。">
+                            <ToggleSwitch x:Name="TraceToggle" />
+
+                            <tk:SettingsExpander.Items>
+                                <tk:SettingsCard Header="記録ファイル"
+                                                 Description="%APPDATA%\TouchKeyboard\trace.log">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button x:Name="OpenLogButton" Content="開く" />
+                                        <Button x:Name="OpenFolderButton" Content="フォルダーを開く" />
+                                    </StackPanel>
+                                </tk:SettingsCard>
+                            </tk:SettingsExpander.Items>
+                        </tk:SettingsExpander>
+
+                        <tk:SettingsCard Header="設定ファイル"
+                                         Description="%APPDATA%\TouchKeyboard\settings.json">
+                            <Button x:Name="OpenSettingsButton" Content="フォルダーを開く" />
+                        </tk:SettingsCard>
+                    </StackPanel>
+
+                    <TextBlock x:Name="StatusText"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Opacity="0.7"
+                               Margin="4,16,0,0"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </ScrollViewer>
+        </NavigationView>
+    </Grid>
+</Window>

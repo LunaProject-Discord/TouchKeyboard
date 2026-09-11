@@ -1,0 +1,14 @@
+<Window
+    x:Class="TouchKeyboard.Views.TrayMenuWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        メニューそのものは MenuFlyout が描く。ここに置くのは開く位置の目印だけ。
+
+        ウィンドウは 1×1 にして通知領域の座標へ移す。
+        MenuFlyout は ShouldConstrainToRootBounds を false にすればウィンドウの外へ
+        広がるので、器の大きさは要らない。
+    -->
+    <Grid x:Name="Anchor" Width="1" Height="1" />
+</Window>

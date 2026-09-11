@@ -1,0 +1,8 @@
+﻿<Solution>
+  <Configurations>
+    <Platform Name="arm64" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/TouchKeyboard/TouchKeyboard.csproj" />
+  </Folder>
+</Solution>

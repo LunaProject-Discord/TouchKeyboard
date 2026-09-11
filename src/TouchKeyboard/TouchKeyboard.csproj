@@ -1,0 +1,82 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>TouchKeyboard</RootNamespace>
+    <AssemblyName>TouchKeyboard</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <UseWinUI>true</UseWinUI>
+
+    <!-- パッケージ化しない。単体の exe として動かす -->
+    <WindowsPackageType>None</WindowsPackageType>
+
+    <!--
+      Windows App SDK 2.4 に対応するランタイムが導入されていないため自己完結にする。
+      ランタイムを別途導入すれば false にでき、配置サイズは大きく減る。
+    -->
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+
+    <Platforms>arm64</Platforms>
+    <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
+    <EnableMsixTooling>false</EnableMsixTooling>
+
+    <!--
+      アンパッケージ実行では Per-Monitor DPI V2 を自分で宣言しないと
+      DPI 非対応として扱われ、拡大率が合わない。
+    -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- タスクトレイのアイコンと同じキーボードの絵にする。exe そのものの絵柄。 -->
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
+
+    <!--
+      UI Automation クライアント（System.Windows.Automation）のため。
+      UseWPF は使わない。有効にすると WPF の XAML ビルドが走り、
+      WinUI の XAML コンパイラと衝突する。アセンブリだけを参照する。
+    -->
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      レイアウト定義は埋め込まず、出力ディレクトリへコピーする。
+      実機でのスキャンコード調整に反復が要るため、再ビルドなしで差し替えられるようにする。
+    -->
+    <None Include="..\..\layouts\**\*.json" Link="layouts\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+
+    <!--
+      刻印のフォント。ms-appx:/// で参照するため、出力ディレクトリの
+      同じ相対位置に置く。アンパッケージ実行では exe のあるディレクトリが
+      ms-appx:/// の起点になる。
+
+      OFL.txt は同梱条件。SIL Open Font License で配布されている。
+    -->
+    <Content Include="Assets\Fonts\GenInterfaceJP-Regular.ttf" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\OFL.txt" CopyToOutputDirectory="PreserveNewest" />
+
+    <!--
+      Caps Lock の南京錠だけに使うフォント。実機の刻印は胴が塗りつぶしだが、
+      OS 同梱の Segoe Fluent Icons の Lock は輪郭のみで一致しないため、
+      塗りつぶしの字形を持つ Fluent System Icons（MIT License）を 1 箇所だけ使う。
+    -->
+    <Content Include="Assets\Fonts\FluentSystemIcons-Filled.ttf" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\FluentSystemIcons-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+
+    <!-- ウィンドウの AppWindow.SetIcon で実行時に読むぶん。exe への埋め込みとは別。 -->
+    <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

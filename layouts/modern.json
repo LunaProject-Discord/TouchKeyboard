@@ -1,0 +1,143 @@
+{
+  // モダン。クラシックからファンクション段を落とした派生。
+  //
+  // 段が 1 つ減るぶん、同じ高さでもキーが大きくなる。
+  // 落とした Esc と F1〜F12 は次のように置き換える。
+  //   Esc      … 半角/全角 の位置へ
+  //   F1〜F12  … Fn を押している間だけ数字段に出す
+  //
+  // 変換まわりは IME の入／切（A / あ）に置き換え、かなは置かない。
+  "name": "モダン",
+  "rowUnits": 15.5,
+  "rows": [
+    {
+      "keys": [
+        { "label": "Esc", "scanCode": "0x01", "width": 1.25, "repeatable": false, "tone": "modifier" },
+        { "label": "1", "shiftLabel": "!", "scanCode": "0x02", "fnLabel": "F1", "fnScanCode": "0x3B" },
+        { "label": "2", "shiftLabel": "\"", "scanCode": "0x03", "fnLabel": "F2", "fnScanCode": "0x3C" },
+        { "label": "3", "shiftLabel": "#", "scanCode": "0x04", "fnLabel": "F3", "fnScanCode": "0x3D" },
+        { "label": "4", "shiftLabel": "$", "scanCode": "0x05", "fnLabel": "F4", "fnScanCode": "0x3E" },
+        { "label": "5", "shiftLabel": "%", "scanCode": "0x06", "fnLabel": "F5", "fnScanCode": "0x3F" },
+        { "label": "6", "shiftLabel": "&", "scanCode": "0x07", "fnLabel": "F6", "fnScanCode": "0x40" },
+        { "label": "7", "shiftLabel": "'", "scanCode": "0x08", "fnLabel": "F7", "fnScanCode": "0x41" },
+        { "label": "8", "shiftLabel": "(", "scanCode": "0x09", "fnLabel": "F8", "fnScanCode": "0x42" },
+        { "label": "9", "shiftLabel": ")", "scanCode": "0x0A", "fnLabel": "F9", "fnScanCode": "0x43" },
+        { "label": "0", "scanCode": "0x0B", "fnLabel": "F10", "fnScanCode": "0x44" },
+        { "label": "-", "shiftLabel": "=", "scanCode": "0x0C", "fnLabel": "F11", "fnScanCode": "0x57" },
+        { "label": "^", "shiftLabel": "~", "scanCode": "0x0D", "fnLabel": "F12", "fnScanCode": "0x58" },
+        // Fn 中は畳む。空いた 1 ユニットを F1〜F12 の 12 個が等分し、
+        // Esc と BS の間が 12 個のキーで埋まる。
+        { "label": "¥", "shiftLabel": "|", "scanCode": "0x7D", "fnHidden": true },
+        // Fn を押している間は Delete になる。クラシックのファンクション段で
+        // Delete が置かれていた場所は、この配列では BS が占めている。
+        { "label": "BS", "icon": "E750", "iconOnly": true, "scanCode": "0x0E", "width": 1.25, "tone": "modifier",
+          "fnLabel": "Delete", "fnScanCode": "0x53", "fnExtended": true }
+      ]
+    },
+    {
+      "keys": [
+        // アイコンの字形が行の中で上に寄っているぶんを下げる。クラシックと同じ実測値。
+        { "label": "Tab", "icon": "E7FD", "scanCode": "0x0F", "width": 1.75, "tone": "modifier", "faceOffset": 0.05, "pairedFaceOffset": 0.125 },
+        { "label": "q", "shiftLabel": "Q", "scanCode": "0x10" },
+        { "label": "w", "shiftLabel": "W", "scanCode": "0x11" },
+        { "label": "e", "shiftLabel": "E", "scanCode": "0x12" },
+        { "label": "r", "shiftLabel": "R", "scanCode": "0x13" },
+        { "label": "t", "shiftLabel": "T", "scanCode": "0x14" },
+        { "label": "y", "shiftLabel": "Y", "scanCode": "0x15" },
+        { "label": "u", "shiftLabel": "U", "scanCode": "0x16" },
+        { "label": "i", "shiftLabel": "I", "scanCode": "0x17" },
+        { "label": "o", "shiftLabel": "O", "scanCode": "0x18" },
+        { "label": "p", "shiftLabel": "P", "scanCode": "0x19" },
+        { "label": "@", "shiftLabel": "`", "scanCode": "0x1A" },
+        { "label": "[", "shiftLabel": "{", "scanCode": "0x1B" },
+        // 字は下段に持たせる。上段だと下段の塗りに隠れる（クラシックと同じ）。
+        { "label": "Enter", "icon": "E751", "scanCode": "0x1C", "width": 1.75, "mergeDown": true, "hideFace": true, "tone": "modifier" }
+      ]
+    },
+    {
+      "keys": [
+        { "label": "Caps", "scanCode": "0x3A", "width": 2.0, "repeatable": false, "tone": "modifier", "isCapsLock": true },
+        { "label": "a", "shiftLabel": "A", "scanCode": "0x1E" },
+        { "label": "s", "shiftLabel": "S", "scanCode": "0x1F" },
+        { "label": "d", "shiftLabel": "D", "scanCode": "0x20" },
+        { "label": "f", "shiftLabel": "F", "scanCode": "0x21" },
+        { "label": "g", "shiftLabel": "G", "scanCode": "0x22" },
+        { "label": "h", "shiftLabel": "H", "scanCode": "0x23" },
+        { "label": "j", "shiftLabel": "J", "scanCode": "0x24" },
+        { "label": "k", "shiftLabel": "K", "scanCode": "0x25" },
+        { "label": "l", "shiftLabel": "L", "scanCode": "0x26" },
+        { "label": ";", "shiftLabel": "+", "scanCode": "0x27" },
+        { "label": ":", "shiftLabel": "*", "scanCode": "0x28" },
+        { "label": "]", "shiftLabel": "}", "scanCode": "0x2B" },
+        { "label": "Enter", "icon": "E751", "scanCode": "0x1C", "width": 1.5, "mergeUp": true, "tone": "modifier" }
+      ]
+    },
+    {
+      "keys": [
+        { "label": "Shift", "icon": "E752", "scanCode": "0x2A", "width": 2.5, "modifier": "Shift" },
+        { "label": "z", "shiftLabel": "Z", "scanCode": "0x2C" },
+        { "label": "x", "shiftLabel": "X", "scanCode": "0x2D" },
+        { "label": "c", "shiftLabel": "C", "scanCode": "0x2E" },
+        { "label": "v", "shiftLabel": "V", "scanCode": "0x2F" },
+        { "label": "b", "shiftLabel": "B", "scanCode": "0x30" },
+        { "label": "n", "shiftLabel": "N", "scanCode": "0x31" },
+        { "label": "m", "shiftLabel": "M", "scanCode": "0x32" },
+        { "label": ",", "shiftLabel": "<", "scanCode": "0x33" },
+        { "label": ".", "shiftLabel": ">", "scanCode": "0x34" },
+        { "label": "/", "shiftLabel": "?", "scanCode": "0x35" },
+        { "label": "\\", "shiftLabel": "_", "scanCode": "0x73" },
+        { "label": "Shift", "icon": "E752", "scanCode": "0x36", "width": 2.0, "modifier": "Shift" }
+      ]
+    },
+    {
+      "height": 0.5,
+      "rowSpan": 2,
+      "keys": [
+        { "label": "Ctrl", "scanCode": "0x1D", "modifier": "Ctrl" },
+        { "label": "Fn", "scanCode": "0x00", "modifier": "Fn" },
+        { "label": "Win", "isWindowsLogo": true, "iconOnly": true, "scanCode": "0x5B", "extended": true, "modifier": "Win" },
+        { "label": "Alt", "scanCode": "0x38", "modifier": "Alt" },
+
+        // IME の入／切。刻印は Microsoft が 2019 年に定めた ImeOn / ImeOff の
+        // キーボードに合わせ、スペースの左が「A」、右が「あ」とする。
+        // Surface などに載っている配列で、無変換・変換・カタカナひらがなの 3 つが
+        // この 2 つに置き換わっている。
+        //
+        // 送るのは仮想キー。この 2 つはスキャンコードでは送れない。
+        //
+        // 実機のスキャンコードは E0 F1 / E0 F2 だが、ビット 7 は解放を表す位置にあり、
+        // 注入すると落とされて 0x71 / 0x72 になる。実測したところ仮想キー 0xFF
+        // （無効）として届き、IME には何も伝わらなかった。
+        // 仮想キーで送れば 0x1A / 0x16 として正しく届く。
+        //
+        // scanCode は配列から引けなかった場合の代わり。無変換・変換を送る。
+        // これで IME が切り替わるかは環境による。開発機では PowerToys が
+        // 無変換・変換を IME の入／切へ割り当てており、そちら経由で通っている。
+        // 素の Windows では単に無変換・変換が押されただけになる。
+        { "label": "A", "boxedLabel": true, "virtualKey": "0x1A", "scanCode": "0x7B", "repeatable": false, "tone": "modifier" },
+        { "label": "", "scanCode": "0x39", "width": 4.5 },
+        { "label": "あ", "boxedLabel": true, "virtualKey": "0x16", "scanCode": "0x79", "repeatable": false, "tone": "modifier" },
+        { "label": "Alt", "scanCode": "0x38", "extended": true, "modifier": "Alt" },
+        { "label": "Ctrl", "scanCode": "0x1D", "extended": true, "modifier": "Ctrl" },
+        { "label": "", "scanCode": "0x00", "spacer": true, "width": 3.0 }
+      ]
+    },
+    {
+      "overlayPrevious": true,
+      "keys": [
+        { "label": "", "scanCode": "0x00", "spacer": true, "width": 13.5 },
+        { "label": "↑", "icon": "E70E", "scanCode": "0x48", "extended": true, "tone": "modifier" },
+        { "label": "", "scanCode": "0x00", "spacer": true }
+      ]
+    },
+    {
+      "height": 0.5,
+      "keys": [
+        { "label": "", "scanCode": "0x00", "spacer": true, "width": 12.5 },
+        { "label": "←", "icon": "E76B", "scanCode": "0x4B", "extended": true, "tone": "modifier" },
+        { "label": "↓", "icon": "E70D", "scanCode": "0x50", "extended": true, "tone": "modifier" },
+        { "label": "→", "icon": "E76C", "scanCode": "0x4D", "extended": true, "tone": "modifier" }
+      ]
+    }
+  ]
+}

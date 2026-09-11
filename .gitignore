@@ -1,0 +1,19 @@
+bin/
+obj/
+publish/
+
+# IDE
+.vs/
+.idea/
+*.user
+*.suo
+
+# Claude Code のツール内部状態
+.claude/
+
+# 署名鍵・証明書（誤ってコミットしないための保険）
+*.pfx
+*.p12
+*.cer
+*.snk
+*.pvk

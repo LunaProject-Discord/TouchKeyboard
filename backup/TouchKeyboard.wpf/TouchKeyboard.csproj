@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!--
+      要件では .NET 8 だが、選定理由は「.NET Framework と異なり Per-Monitor DPI V2 の
+      サポートが十分であること」であり、.NET 10 でも同じく満たされる。
+      開発機に .NET 8 Desktop Runtime が無く、.NET 10 は LTS であるため net10.0-windows を採る。
+    -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>TouchKeyboard</RootNamespace>
+    <AssemblyName>TouchKeyboard</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <UseWPF>true</UseWPF>
+    <!-- タスクトレイ常駐に System.Windows.Forms.NotifyIcon を使う（要件 F-6） -->
+    <UseWindowsForms>true</UseWindowsForms>
+
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- P/Invoke の宣言誤りを早期に検出する -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+
+    <!--
+      WFO0003: WinForms アナライザーが「DPI 設定を app.manifest から外せ」と警告するが、
+      これは WinForms アプリ向けの指摘。本アプリは WPF であり、Per-Monitor DPI V2 は
+      マニフェストで宣言するのが正しい。UseWindowsForms=true のために発火しているだけなので抑制する。
+    -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      UseWindowsForms は System.Windows.Forms と System.Drawing のグローバル using を足すため、
+      Application / MessageBox / Brush / Color などが WPF の同名型と衝突する。
+      WinForms は NotifyIcon にしか使わないのでグローバル using だけを外し、
+      必要な箇所で明示的に修飾する。
+    -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      レイアウト定義は埋め込まず、出力ディレクトリへコピーする。
+      実機でのスキャンコード確定に反復が要るため、再ビルドなしで差し替えられるようにする。
+    -->
+    <None Include="..\..\layouts\**\*.json"
+          Link="layouts\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

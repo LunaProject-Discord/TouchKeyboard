@@ -1,0 +1,50 @@
+{
+  "name": "テンキー",
+  "rowUnits": 4.0,
+
+  // 印字はすべて中央。4 列しかないため、端へ寄せると盤が左右に割れて見える。
+  "centerLabels": true,
+
+  "rows": [
+    {
+      "keys": [
+        { "label": "NumLk", "scanCode": "0x45", "extended": true, "repeatable": false, "tone": "modifier" },
+        { "label": "/", "scanCode": "0x35", "extended": true },
+        { "label": "*", "scanCode": "0x37" },
+        { "label": "-", "scanCode": "0x4A" }
+      ]
+    },
+    {
+      "keys": [
+        { "label": "7", "scanCode": "0x47" },
+        { "label": "8", "scanCode": "0x48" },
+        { "label": "9", "scanCode": "0x49" },
+        // 字は下段に持たせる。上段だと下段の塗りに隠れる。
+        { "label": "+", "scanCode": "0x4E", "mergeDown": true, "hideFace": true }
+      ]
+    },
+    {
+      "keys": [
+        { "label": "4", "scanCode": "0x4B" },
+        { "label": "5", "scanCode": "0x4C" },
+        { "label": "6", "scanCode": "0x4D" },
+        { "label": "+", "scanCode": "0x4E", "mergeUp": true }
+      ]
+    },
+    {
+      "keys": [
+        { "label": "1", "scanCode": "0x4F" },
+        { "label": "2", "scanCode": "0x50" },
+        { "label": "3", "scanCode": "0x51" },
+        { "label": "Enter", "icon": "E751", "scanCode": "0x1C", "extended": true, "mergeDown": true, "hideFace": true, "tone": "modifier" }
+      ]
+    },
+    {
+      "keys": [
+        { "label": "0", "scanCode": "0x52", "width": 2.0 },
+        { "label": ".", "scanCode": "0x53" },
+        { "label": "Enter", "icon": "E751", "scanCode": "0x1C", "extended": true, "mergeUp": true, "tone": "modifier" }
+      ]
+    }
+  ]
+}
