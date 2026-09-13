@@ -16,7 +16,12 @@ param(
     [Parameter(Mandatory)] [string] $OutFile,
     # ルート直下だけで除外するファイル名。固定 Id で個別に宣言したいファイル
     # （TouchKeyboard.exe 本体など）をここで除き、二重定義を避ける。
-    [string[]] $ExcludeAtRoot = @()
+    [string[]] $ExcludeAtRoot = @(),
+    # ルート直下だけで除外するフォルダ名。dotnet build 出力に残る
+    # native/（旧 AOT 検証の残骸）、publish/（旧 dotnet publish の残骸）向け。
+    [string[]] $ExcludeDirsAtRoot = @(),
+    # 拡張子で除外（大文字小文字を区別しない）。.pdb など配布に不要なものを除く。
+    [string[]] $ExcludeExtensions = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,6 +40,12 @@ function Write-DirectoryEntries {
 
     foreach ($entry in $entries) {
         if ($IsRoot -and -not $entry.PSIsContainer -and $ExcludeAtRoot -contains $entry.Name) {
+            continue
+        }
+        if ($IsRoot -and $entry.PSIsContainer -and $ExcludeDirsAtRoot -contains $entry.Name) {
+            continue
+        }
+        if (-not $entry.PSIsContainer -and $ExcludeExtensions -contains $entry.Extension) {
             continue
         }
         if ($entry.PSIsContainer) {

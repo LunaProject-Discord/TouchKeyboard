@@ -69,7 +69,7 @@ dotnet build TouchKeyboard.slnx
 powershell -ExecutionPolicy Bypass -File tools\install-dev.ps1
 ```
 
-配布用には MSI を使う。`installer\build-msi.ps1` が publish・署名・証明書の書き出し・`TouchKeyboard.msi` の生成までを行う（管理者権限は不要）。
+配布用には MSI を使う。`installer\build-msi.ps1` がビルド（`dotnet build`）・署名・証明書の書き出し・`TouchKeyboard.msi` の生成までを行う（管理者権限は不要）。`dotnet publish` の出力は使わない。コンパイル済み XAML（`.pri`/`.xbf`）が抜け落ち、`Application.Start()` が確率的にクラッシュする不具合が実機で確認されたため。
 
 ```
 powershell -ExecutionPolicy Bypass -File installer\build-msi.ps1

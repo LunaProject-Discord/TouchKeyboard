@@ -30,4 +30,5 @@
 | Fn キーの扱い | スキャンコードを送出せず、数字段を `Esc` / `F1`〜`F12` / `Del` に切り替えるアプリ内部の機能 | `layouts/jis-full.json` |
 | 自動表示時の AppBar | 隠すたびに `ABM_REMOVE`、表示で `ABM_NEW`。フォーカス移動の連発に備えデバウンスする（Phase 4） | `Views/DockManager.cs` |
 | .NET のバージョン | `net10.0-windows`。選定理由（Per-Monitor DPI V2）は .NET 10 でも満たされ、開発機に .NET 8 ランタイムが無く、.NET 10 は LTS | `TouchKeyboard.csproj` |
-| インストーラー | 自己署名証明書のまま、個人利用の範囲に留める。WiX Toolset で MSI を作る。`installer/build-msi.ps1` が publish・署名・証明書書き出し・MSI ビルドまでを行い、`installer/TouchKeyboard.wxs` が配置・証明書の信頼登録（インストール時のカスタムアクション）・スタートメニュー登録・「アプリと機能」への登録を定義する。アンインストールは Windows の標準機能（設定 > アプリ）に任せ、専用スクリプトは持たない | `installer/TouchKeyboard.wxs`, `installer/build-msi.ps1` |
+| インストーラー | 自己署名証明書のまま、個人利用の範囲に留める。WiX Toolset で MSI を作る。`installer/build-msi.ps1` がビルド（`dotnet build`。`dotnet publish` は使わない）・署名・証明書書き出し・MSI ビルドまでを行い、`installer/TouchKeyboard.wxs` が配置・証明書の信頼登録（インストール時のカスタムアクション）・スタートメニュー登録・「アプリと機能」への登録を定義する。アンインストールは Windows の標準機能（設定 > アプリ）に任せ、専用スクリプトは持たない | `installer/TouchKeyboard.wxs`, `installer/build-msi.ps1` |
+| MSI の元データ | `dotnet publish` ではなく `dotnet build` の出力を使う | `dotnet publish -r win-arm64 --self-contained true` の出力では `TouchKeyboard.pri` / `*.xbf`（コンパイル済み XAML）が生成されず、`Microsoft.UI.Xaml.dll` 内部の `Application.Start()` が確率的にクラッシュする（実機で 8 回中 5 回失敗を確認）。`dotnet build` の出力にはこれらが含まれ、10 回連続起動で再現しなくなった | `installer/build-msi.ps1` |

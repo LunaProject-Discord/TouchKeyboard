@@ -13,8 +13,11 @@
   実行ファイルへの署名自体はビルド時（build-msi.ps1）に済ませてある。
   MSI はファイルをそのままコピーするだけなので、署名は保持される。
 
-  ファイル一覧（730 個の自己完結配置一式）は手書きせず、
-  generate-files.ps1 が publish 出力から Files.wxs を生成する。
+  ファイル一覧（自己完結配置一式）は手書きせず、generate-files.ps1 が
+  dotnet build 出力（$(var.BuildDir)）から Files.wxs を生成する。
+  dotnet publish の出力は使わない。TouchKeyboard.pri / *.xbf
+  （コンパイル済み XAML）が抜け落ち、Microsoft.UI.Xaml.dll 内部の
+  Application.Start() が確率的にクラッシュする不具合を実機で確認した。
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
@@ -40,7 +43,7 @@
     <StandardDirectory Id="ProgramFiles6432Folder">
       <Directory Id="INSTALLFOLDER" Name="TouchKeyboard">
         <Component Id="MainExecutable" Guid="*">
-          <File Id="TouchKeyboardExe" Name="TouchKeyboard.exe" Source="publish\TouchKeyboard.exe" KeyPath="yes" />
+          <File Id="TouchKeyboardExe" Name="TouchKeyboard.exe" Source="$(var.BuildDir)\TouchKeyboard.exe" KeyPath="yes" />
         </Component>
 
         <!-- 署名検証用の公開鍵のみ。秘密鍵は含まない。 -->
