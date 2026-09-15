@@ -378,6 +378,19 @@ public sealed class FocusWatcher : IDisposable
     {
         _hiddenAt = Environment.TickCount64;
 
+        // 「意図的に出した」扱いは今の表示中だけのもの。隠れた時点で終わりにする。
+        //
+        // これを残したままだと、厳密ポリシーのアプリを一度でも自分で触って
+        // 出したあと、閉じてもそのアプリの中にいる限りずっと厳密の確認
+        // （NotifyTouched 経由の実タッチ）を素通りしてしまう。実機の trace.log
+        // で確認した例：OneNote の入力欄を触って表示 → スワイプで閉じる →
+        // ペンで書く → 消しゴム側を近づけると、OneNote 自身が内部的に
+        // ContentOutline へフォーカスを動かしており（触れてすらいない）、
+        // 「意図的」がまだ残っていたせいでそのまま表示し直されていた
+        // （利用者の報告：「OneNote で消しゴムボタンをホバーするだけで
+        // キーボードが表示される」）。
+        _deliberateProcessId = 0;
+
         if (!manual) return;
 
         try
@@ -629,6 +642,18 @@ public sealed class FocusWatcher : IDisposable
             // 隠した直後、自分が広げた作業領域への再レイアウトで入力欄が
             // フォーカスを取り直しただけかもしれない。表示中の re-fire には関係なく、
             // これから新たに出す場合だけを見る。触ってから来たものなら本人の操作。
+            //
+            // ここを時間で区切らず「触れるまで中立」にしたことがあったが、
+            // タッチパネルに一度も触れていないまま物理キーボードやマウスだけで
+            // 操作しているとき、以後ずっと入力欄への焦点変更が拾えなくなる
+            // 退行を起こした（LastPointerInputAt がタッチ・ペンの生入力しか
+            // 見ていないため）。短い猶予に留める。
+            //
+            // 当初はここで OneNote の「消しゴムボタンにペンを近づけただけで
+            // キーボードが表示される」不具合も抑え込もうとしたが、実際の原因は
+            // 別にあった（TouchDigitizer.Touching 参照。消しゴム側のホバーが
+            // 接触と誤認されていた）。そちらを直したので、ここは本来の
+            // 再レイアウトのゆれを吸収する短い猶予のためだけに戻す。
             if (IsKeyboardShown?.Invoke() != true
                 && Environment.TickCount64 - _hiddenAt < SettleAfterHideMs
                 && (LastPointerInputAt?.Invoke() ?? 0) <= _hiddenAt)

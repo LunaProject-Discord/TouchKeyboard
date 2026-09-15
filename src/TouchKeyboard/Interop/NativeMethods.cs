@@ -236,6 +236,10 @@ internal static class NativeMethods
     /// <summary>
     /// ペンを反転させている（先端ではなく反対側の消しゴムを使っている）か。
     /// 一部のペン／ドライバでは、この状態でも接触に見える値が紛れて出ることがある。
+    ///
+    /// 消しゴム側でもこの使用状況が一度も出ない機種があることを実機で確認したが、
+    /// In Range・Confidence の有無による判別は指の本物のタッチとの区別が
+    /// つかず断念した（TouchDigitizer.Touching 参照）。
     /// </summary>
     internal const ushort HID_USAGE_DIGITIZER_INVERT = 0x3C;
 
