@@ -815,11 +815,46 @@ public sealed class FocusWatcher : IDisposable
         element.GetCurrentPropertyValue(property) is true;
 
     /// <summary>
-    /// 読み取り専用か。値パターンを持たない要素では判定できないので false を返す。
-    /// 表示できないより、余計に表示されるほうが害が小さい。
+    /// 読み取り専用か。
+    ///
+    /// 値パターンで判定できるならそれに従う。持たない要素（Word エンジンなど、
+    /// リッチテキストは値パターンを実装しないことが多い）では、テキストパターンの
+    /// 文字単位の属性で補う。どちらの手立てもなければ判定できないので false を返す
+    /// （表示できないより、余計に表示されるほうが害が小さい）。
+    ///
+    /// Outlook（クラシック）の閲覧ウィンドウは、メール本文の描画に Word の
+    /// エンジンをそのまま使っている（class="_WwG"）。この要素は値パターンを
+    /// 持たないため、これまでは判定できず「読み取り専用でない」側に倒れて、
+    /// ただ閲覧しているだけでキーボードが表示されていた（利用者の報告：
+    /// 「Outlook (classic) でメールを閲覧している際にタップしてもキーボードが
+    /// 表示されてしまいます」）。実機の trace.log で、閲覧中は文字属性の
+    /// IsReadOnlyAttribute が true、返信・新規作成の編集領域（別ウィンドウの
+    /// 場合も、閲覧ウィンドウ内でインライン返信を開いた場合も）では false に
+    /// なることを確認した。
     /// </summary>
-    private static bool IsReadOnly(AutomationElement element) =>
-        element.GetCurrentPropertyValue(ValuePattern.IsReadOnlyProperty, ignoreDefaultValue: true) is true;
+    private static bool IsReadOnly(AutomationElement element)
+    {
+        var viaValue = element.GetCurrentPropertyValue(ValuePattern.IsReadOnlyProperty, ignoreDefaultValue: true);
+        if (viaValue is bool isReadOnly) return isReadOnly;
+
+        return TextAttributeReadOnly(element) == true;
+    }
+
+    /// <summary>テキストパターンの文字単位の属性から読み取り専用かを見る。判定できなければ null。</summary>
+    private static bool? TextAttributeReadOnly(AutomationElement element)
+    {
+        if (!HasPattern(element, AutomationElement.IsTextPatternAvailableProperty)) return null;
+
+        try
+        {
+            var text = (TextPattern)element.GetCurrentPattern(TextPattern.Pattern);
+            return text.DocumentRange.GetAttributeValue(TextPattern.IsReadOnlyAttribute) as bool?;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 
     public void Dispose() => Stop();
 }
