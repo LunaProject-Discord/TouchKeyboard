@@ -114,9 +114,11 @@
         // これで IME が切り替わるかは環境による。開発機では PowerToys が
         // 無変換・変換を IME の入／切へ割り当てており、そちら経由で通っている。
         // 素の Windows では単に無変換・変換が押されただけになる。
-        { "label": "A", "boxedLabel": true, "virtualKey": "0x1A", "scanCode": "0x7B", "repeatable": false, "tone": "modifier" },
-        { "label": "", "scanCode": "0x39", "width": 4.5 },
-        { "label": "あ", "boxedLabel": true, "virtualKey": "0x16", "scanCode": "0x79", "repeatable": false, "tone": "modifier" },
+        // パスワード欄では IME の入/切が意味を持たないため畳み、
+        // 空いた幅はスペースキーへ渡す（押しやすさを保つため）。
+        { "label": "A", "boxedLabel": true, "virtualKey": "0x1A", "scanCode": "0x7B", "repeatable": false, "tone": "modifier", "passwordHidden": true },
+        { "label": "", "scanCode": "0x39", "width": 4.5, "passwordWidthTaker": true },
+        { "label": "あ", "boxedLabel": true, "virtualKey": "0x16", "scanCode": "0x79", "repeatable": false, "tone": "modifier", "passwordHidden": true },
         { "label": "Alt", "scanCode": "0x38", "extended": true, "modifier": "Alt" },
         { "label": "Ctrl", "scanCode": "0x1D", "extended": true, "modifier": "Ctrl" },
         { "label": "", "scanCode": "0x00", "spacer": true, "width": 3.0 }

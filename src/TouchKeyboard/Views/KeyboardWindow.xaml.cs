@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
+using TouchKeyboard.Automation;
 using TouchKeyboard.Diagnostics;
 using TouchKeyboard.Input;
 using TouchKeyboard.Interop;
@@ -291,7 +292,11 @@ public sealed partial class KeyboardWindow : Window
         target.RowDefinitions.Clear();
 
         // 控えは本体の盤のぶんだけ。テンキーを組むときに捨ててしまわないようにする。
-        if (ReferenceEquals(target, KeyRoot)) _fnRows.Clear();
+        if (ReferenceEquals(target, KeyRoot))
+        {
+            _fnRows.Clear();
+            _passwordRows.Clear();
+        }
 
         // 行の高さは定義の倍率で配分する。ファンクション段だけ低くする、といった指定ができる。
         // overlayPrevious の行は新しい行を消費せず、直前と同じ位置に重ねる。
@@ -414,6 +419,12 @@ public sealed partial class KeyboardWindow : Window
     /// </summary>
     private readonly List<List<(ColumnDefinition Column, KeyButton Button)>> _fnRows = [];
 
+    /// <summary>
+    /// パスワード欄で幅の変わる行。<see cref="_fnRows"/> と同じ理由で、
+    /// 組み直さず列だけを差し替えるために持つ。
+    /// </summary>
+    private readonly List<List<(ColumnDefinition Column, KeyButton Button)>> _passwordRows = [];
+
     private Grid BuildRow(KeyRow row, LayoutDefinition layout, List<KeySpan> spans)
     {
         var grid = new Grid();
@@ -457,6 +468,9 @@ public sealed partial class KeyboardWindow : Window
 
         // Fn 段で構成の変わる行だけ控える。他の行は幅を触らない。
         if (cells.Any(cell => cell.Button.Definition.FnHidden)) _fnRows.Add(cells);
+
+        // パスワード欄で構成の変わる行だけ控える。
+        if (cells.Any(cell => cell.Button.Definition.PasswordHidden)) _passwordRows.Add(cells);
 
         // 行の幅が rowUnits に満たない分は右端の隙間にする。
         // これで行ごとのキー数が違っても縦の位置が揃う。
@@ -1288,11 +1302,18 @@ public sealed partial class KeyboardWindow : Window
     /// <summary>Caps Lock が掛かっているか。Caps キーの灯りに使う。</summary>
     private bool _capsLockOn;
 
+    /// <summary>入力先がパスワード欄か。ImeOn/ImeOff の要否とスペースキーの幅に使う。</summary>
+    private bool _isPasswordField;
+
     private DispatcherQueueTimer? _stateTimer;
 
     /// <summary>かなを刻む配列でのみ見る。他では問い合わせる意味が無い。</summary>
     private bool NeedsImeState =>
         _layout?.Rows.Any(row => row.Keys.Any(key => key.Kana is { Length: > 0 })) == true;
+
+    /// <summary>パスワード欄で畳むキーを持つ配列でのみ見る。他では問い合わせる意味が無い。</summary>
+    private bool NeedsPasswordState =>
+        _layout?.Rows.Any(row => row.Keys.Any(key => key.PasswordHidden)) == true;
 
     /// <summary>
     /// IME の入切・Caps Lock の状態を定期的に確かめる。
@@ -1342,6 +1363,18 @@ public sealed partial class KeyboardWindow : Window
             changed = true;
         }
 
+        // パスワード欄は ImeOn/ImeOff を畳むキーを持つ配列のときだけ見る。
+        if (NeedsPasswordState)
+        {
+            // 読めないときは前の値を保つ。取れないたびにレイアウトが揺れると押しにくい。
+            var isPassword = PasswordFieldState.IsPassword() ?? _isPasswordField;
+            if (isPassword != _isPasswordField)
+            {
+                _isPasswordField = isPassword;
+                changed = true;
+            }
+        }
+
         if (changed) RefreshAllKeys();
     }
 
@@ -1365,6 +1398,7 @@ public sealed partial class KeyboardWindow : Window
         }
 
         ApplyFnLayout(_dispatcher.Modifiers.IsFnActive);
+        ApplyPasswordLayout(_isPasswordField);
     }
 
     /// <summary>
@@ -1398,6 +1432,46 @@ public sealed partial class KeyboardWindow : Window
 
                 var width = def.Width;
                 if (fnActive && !fold && takers.Any(t => ReferenceEquals(t.Button, button)))
+                {
+                    width += extra;
+                }
+
+                column.Width = new GridLength(fold ? 0 : width, GridUnitType.Star);
+                button.Visibility = fold ? Visibility.Collapsed : Visibility.Visible;
+            }
+        }
+    }
+
+    /// <summary>
+    /// パスワード欄での段の構成を反映する。
+    ///
+    /// パスワード欄では IME の入／切が意味を持たない（直接入力に固定され、
+    /// 切り替える必要がない）ため ImeOn/ImeOff を畳み、空いた幅をスペースキーへ
+    /// 渡して押しやすさを保つ。<see cref="ApplyFnLayout"/> と同じ形。
+    /// </summary>
+    private void ApplyPasswordLayout(bool passwordActive)
+    {
+        foreach (var cells in _passwordRows)
+        {
+            var folded = cells
+                .Where(cell => cell.Button.Definition.PasswordHidden)
+                .Sum(cell => cell.Button.Definition.Width);
+
+            var takers = cells
+                .Where(cell => cell.Button.Definition.PasswordWidthTaker)
+                .ToList();
+
+            if (folded <= 0 || takers.Count == 0) continue;
+
+            var extra = folded / takers.Count;
+
+            foreach (var (column, button) in cells)
+            {
+                var def = button.Definition;
+                var fold = passwordActive && def.PasswordHidden;
+
+                var width = def.Width;
+                if (passwordActive && !fold && takers.Any(t => ReferenceEquals(t.Button, button)))
                 {
                     width += extra;
                 }

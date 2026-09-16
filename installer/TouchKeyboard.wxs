@@ -24,7 +24,7 @@
 
   <Package Name="TouchKeyboard"
            Manufacturer="Luna Project"
-           Version="1.0.1.0"
+           Version="1.0.2.0"
            UpgradeCode="9752077B-24FC-4F9C-86B4-6F591EA65D85"
            Scope="perMachine"
            Codepage="65001">

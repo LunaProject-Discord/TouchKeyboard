@@ -107,6 +107,20 @@ public sealed class KeyDefinition
     /// </summary>
     public bool FnHidden { get; init; }
 
+    /// <summary>
+    /// パスワード欄にフォーカスがある間は置かない。
+    ///
+    /// IME の入／切はパスワード欄では意味を持たない。空いた幅は、同じ行で
+    /// <see cref="PasswordWidthTaker"/> を指定したキーが等分して受け取る。
+    /// </summary>
+    public bool PasswordHidden { get; init; }
+
+    /// <summary>
+    /// パスワード欄にフォーカスがある間、<see cref="PasswordHidden"/> で畳んだ
+    /// キーの幅を受け取る。スペースキーに指定し、押しやすさを保つために使う。
+    /// </summary>
+    public bool PasswordWidthTaker { get; init; }
+
     /// <summary>ユニット倍率。行内での幅の比率。</summary>
     public double Width { get; init; } = 1.0;
 
