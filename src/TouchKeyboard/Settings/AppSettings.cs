@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json.Serialization;
@@ -34,7 +35,8 @@ public sealed class AppSettings
     ///
     /// 自動表示が起きたアプリは、初めて見た時点でここに追加される。
     /// あとから settings.json を編集して <see cref="AutoShowPolicy"/> を選べる。
-    /// 変更はアプリの再起動で反映される。
+    /// <see cref="PolicyFor"/> は毎回この辞書を読みに行くため、変更は次に
+    /// そのアプリへフォーカスが移った時点から反映される。再起動は不要。
     /// </summary>
     public Dictionary<string, AutoShowPolicy> AutoShowRules { get; set; } =
         new(StringComparer.OrdinalIgnoreCase);
@@ -62,6 +64,21 @@ public sealed class AppSettings
     private static readonly object Gate = new();
 
     /// <summary>
+    /// パス中のバージョンらしき部分（"1.40609.0.0"、"1.0.47" のような、
+    /// 2 つ以上の数字がドットで繋がった並び）を目印に置き換える。
+    ///
+    /// アプリの更新で実行ファイルのパスが変わることがある。WindowsApps の
+    /// パッケージフォルダ（例: "Claude_1.40609.0.0_arm64__pzs8sxrjxfjjc"）や、
+    /// Discord のような自己更新型アプリ（例: "app-1.0.47\Discord.exe"）では、
+    /// バージョン番号そのものがディレクトリ名に含まれる。ここを揃えて比較すれば、
+    /// 同じアプリの新しいバージョンかどうかが分かる。
+    /// </summary>
+    private static readonly Regex VersionSegment = new(@"\d+(\.\d+){1,}", RegexOptions.Compiled);
+
+    private static string NormalizeForMatch(string executablePath) =>
+        VersionSegment.Replace(executablePath, "#");
+
+    /// <summary>
     /// そのアプリの扱いを返す。未登録なら既定を決めて登録する。
     /// 一覧に現れて初めて、利用者は設定できることに気付ける。
     /// </summary>
@@ -76,10 +93,28 @@ public sealed class AppSettings
         {
             if (AutoShowRules.TryGetValue(executablePath, out policy)) return policy;
 
-            var name = Path.GetFileNameWithoutExtension(executablePath);
-            policy = StrictByDefault.Contains(name, StringComparer.OrdinalIgnoreCase)
-                ? AutoShowPolicy.Strict
-                : AutoShowPolicy.Auto;
+            // 完全一致が無かった。アップデートでディレクトリが変わっただけの
+            // 可能性を見る。バージョンらしき部分を置き換えたパスが一致する
+            // 既存キーがあれば、そのアプリの更新とみなして扱いを引き継ぐ。
+            // 古いバージョンぶんのキーは消す。残すと更新のたびに増え続ける
+            // （実機の settings.json で、同じアプリの版違いが何個も溜まっていた）。
+            var normalized = NormalizeForMatch(executablePath);
+            var staleKeys = AutoShowRules.Keys
+                .Where(key => string.Equals(NormalizeForMatch(key), normalized, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (staleKeys.Count > 0)
+            {
+                policy = AutoShowRules[staleKeys[0]];
+                foreach (var key in staleKeys) AutoShowRules.Remove(key);
+            }
+            else
+            {
+                var name = Path.GetFileNameWithoutExtension(executablePath);
+                policy = StrictByDefault.Contains(name, StringComparer.OrdinalIgnoreCase)
+                    ? AutoShowPolicy.Strict
+                    : AutoShowPolicy.Auto;
+            }
 
             AutoShowRules[executablePath] = policy;
             added = true;

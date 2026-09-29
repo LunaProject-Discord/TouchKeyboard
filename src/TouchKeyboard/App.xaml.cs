@@ -89,6 +89,21 @@ public partial class App : Application
 
     private DispatcherQueueTimer? _tapConfirmTimer;
 
+    /// <summary>
+    /// 物理キーボードの着脱を定期的に確かめる猶予。
+    ///
+    /// 本来は WM_SETTINGCHANGE（lParam "ConvertibleSlateMode"）で通知が来るはずだが、
+    /// 実機でこの通知そのものが届かなくなる状態を確認した（OS 側の挙動と見られ、
+    /// アプリの変更とは無関係）。通知に頼り切らず、保険として定期的にも見に行く。
+    /// 見た目の反映が数百ms 遅れても実害は無いため、間隔は緩めにしてある。
+    /// </summary>
+    private const int PhysicalKeyboardPollMs = 1000;
+
+    private DispatcherQueueTimer? _physicalKeyboardPollTimer;
+
+    /// <summary>直近に確かめた物理キーボードの有無。ポーリングで変化を見分けるために持つ。</summary>
+    private bool _lastKnownHasPhysicalKeyboard;
+
     /// <summary>タップかどうかを確かめている最中の接触があるか。</summary>
     private bool _tapCandidateActive;
 
@@ -263,6 +278,21 @@ public partial class App : Application
         _tapConfirmTimer.Interval = TimeSpan.FromMilliseconds(TapConfirmDelayMs);
         _tapConfirmTimer.IsRepeating = false;
         _tapConfirmTimer.Tick += (_, _) => ConfirmTapCandidate();
+
+        // 通知に頼らない、着脱の保険。詳細は _physicalKeyboardPollTimer の説明を参照。
+        _lastKnownHasPhysicalKeyboard = InputDevices.HasPhysicalKeyboard();
+        _physicalKeyboardPollTimer = _window.DispatcherQueue.CreateTimer();
+        _physicalKeyboardPollTimer.Interval = TimeSpan.FromMilliseconds(PhysicalKeyboardPollMs);
+        _physicalKeyboardPollTimer.IsRepeating = true;
+        _physicalKeyboardPollTimer.Tick += (_, _) =>
+        {
+            var has = InputDevices.HasPhysicalKeyboard();
+            if (has == _lastKnownHasPhysicalKeyboard) return;
+
+            _lastKnownHasPhysicalKeyboard = has;
+            HandlePhysicalKeyboardChanged();
+        };
+        _physicalKeyboardPollTimer.Start();
 
         // 表示直後の揺れと利用者の操作を見分けるため、ポインタの最終操作時刻を渡す。
         _focus.LastPointerInputAt = LastForeignPointerAt;
@@ -529,23 +559,11 @@ public partial class App : Application
                 // 拡大率の変更もこの通知で来ることがある。
                 _tray?.RefreshIcon();
 
-                // キーボードの着脱で通知される。
+                // キーボードの着脱で通知される（届く場合。_physicalKeyboardPollTimer も参照）。
                 if (lParam != 0 && Marshal.PtrToStringUni(lParam) == "ConvertibleSlateMode")
                 {
-                    TraceLog.Write(
-                        $"キーボード着脱  物理キーボード={InputDevices.HasPhysicalKeyboard()}");
-
-                    if (InputDevices.HasPhysicalKeyboard())
-                    {
-                        // 使えるようになったので引っ込む。
-                        _window.HideKeyboard(remember: false);
-                    }
-                    else
-                    {
-                        // 外された。フォーカスは動いていないので、
-                        // いま入力欄に居るかどうかを自分で確かめ直す。
-                        _focus?.Reevaluate();
-                    }
+                    _lastKnownHasPhysicalKeyboard = InputDevices.HasPhysicalKeyboard();
+                    HandlePhysicalKeyboardChanged();
                 }
 
                 break;
@@ -563,10 +581,37 @@ public partial class App : Application
         return false;
     }
 
+    /// <summary>
+    /// 物理キーボードの着脱に反応する。WM_SETTINGCHANGE と _physicalKeyboardPollTimer の
+    /// 両方から呼ばれる。呼ぶ前に <see cref="_lastKnownHasPhysicalKeyboard"/> を
+    /// 更新しておくこと。
+    /// </summary>
+    private void HandlePhysicalKeyboardChanged()
+    {
+        TraceLog.Write($"キーボード着脱  物理キーボード={InputDevices.HasPhysicalKeyboard()}");
+
+        if (InputDevices.HasPhysicalKeyboard())
+        {
+            // 使えるようになったので引っ込む。
+            _window?.HideKeyboard(remember: false);
+        }
+        else
+        {
+            // 外された。フォーカスは動いていないので、
+            // いま入力欄に居るかどうかを自分で確かめ直す。
+            _focus?.Reevaluate();
+        }
+
+        _tray?.RefreshIcon();
+    }
+
     private void Teardown()
     {
         if (_tornDown) return;
         _tornDown = true;
+
+        _physicalKeyboardPollTimer?.Stop();
+        _physicalKeyboardPollTimer = null;
 
         // 低レベルフックを真っ先に外す。
         //

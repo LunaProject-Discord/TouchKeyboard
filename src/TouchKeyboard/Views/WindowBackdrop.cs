@@ -31,6 +31,14 @@ public sealed class WindowBackdrop : IDisposable
     /// <summary>適用できなかった場合の理由。診断用。</summary>
     public string Status { get; private set; } = "未適用";
 
+    /// <summary>
+    /// 適用しなかったのが低電力モードによるものか。
+    ///
+    /// これは意図した動作であり、環境非対応や例外とは違って利用者に
+    /// 知らせるべき不具合ではない。呼び出し側がエラー表示を抑えるために見る。
+    /// </summary>
+    public bool SkippedForLowPower { get; private set; }
+
     public WindowBackdrop(Window window, bool isDark, BackdropMaterial material)
     {
         try
@@ -42,6 +50,7 @@ public sealed class WindowBackdrop : IDisposable
             if (PowerMode.IsLowPower)
             {
                 Status = "低電力モード中のため素材を適用しません";
+                SkippedForLowPower = true;
                 return;
             }
 

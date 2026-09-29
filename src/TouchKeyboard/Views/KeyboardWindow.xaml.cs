@@ -526,11 +526,11 @@ public sealed partial class KeyboardWindow : Window
         // 下の画面が透けてしまう。単色で塗って埋める。
         Shell.Background = _backdrop.IsApplied ? null : _theme.PanelBackground;
 
-        if (!_backdrop.IsApplied)
+        // 低電力モード中の未適用は意図した動作であり、不具合ではない。
+        if (!_backdrop.IsApplied && !_backdrop.SkippedForLowPower)
         {
             Log($"背景の素材を適用できません: {_backdrop.Status}", isError: true);
         }
-
     }
 
     private void ApplyTheme()
@@ -1397,29 +1397,38 @@ public sealed partial class KeyboardWindow : Window
                 _imeOpen);
         }
 
-        ApplyFnLayout(_dispatcher.Modifiers.IsFnActive);
-        ApplyPasswordLayout(_isPasswordField);
+        ApplyFoldingLayout(
+            _fnRows, _dispatcher.Modifiers.IsFnActive,
+            isHidden: def => def.FnHidden,
+            // 受け取るのは Fn 段を持つ文字キー。Esc や BS のような役割のキーは広げない。
+            isTaker: def => def is { HasFnLayer: true, IsCharacter: true });
+
+        ApplyFoldingLayout(
+            _passwordRows, _isPasswordField,
+            isHidden: def => def.PasswordHidden,
+            isTaker: def => def.PasswordWidthTaker);
     }
 
     /// <summary>
-    /// Fn 段での段の構成を反映する。
+    /// 特定の条件で畳むキーを持つ行の段構成を反映する。
+    /// Fn 段（数字段を F1〜F12 に差し替え）とパスワード欄（ImeOn/ImeOff を畳む）で共用する。
     ///
-    /// Fn 中は置かないキーを畳み、空いた幅を同じ行の文字キーが等分する。
-    /// モダンの数字段では ¥ が畳まれ、13 ユニットぶんの場所を F1〜F12 の
-    /// 12 個が等分する。Esc と BS は幅を変えず、位置も動かない。
+    /// <paramref name="isHidden"/> を満たすキーは <paramref name="active"/> のとき畳み、
+    /// 空いた幅は同じ行で <paramref name="isTaker"/> を満たすキーが等分して受け取る。
     /// </summary>
-    private void ApplyFnLayout(bool fnActive)
+    private static void ApplyFoldingLayout(
+        List<List<(ColumnDefinition Column, KeyButton Button)>> rows,
+        bool active,
+        Func<KeyDefinition, bool> isHidden,
+        Func<KeyDefinition, bool> isTaker)
     {
-        foreach (var cells in _fnRows)
+        foreach (var cells in rows)
         {
             var folded = cells
-                .Where(cell => cell.Button.Definition.FnHidden)
+                .Where(cell => isHidden(cell.Button.Definition))
                 .Sum(cell => cell.Button.Definition.Width);
 
-            // 受け取るのは Fn 段を持つ文字キー。Esc や BS のような役割のキーは広げない。
-            var takers = cells
-                .Where(cell => cell.Button.Definition is { HasFnLayer: true, IsCharacter: true })
-                .ToList();
+            var takers = cells.Where(cell => isTaker(cell.Button.Definition)).ToList();
 
             if (folded <= 0 || takers.Count == 0) continue;
 
@@ -1428,10 +1437,10 @@ public sealed partial class KeyboardWindow : Window
             foreach (var (column, button) in cells)
             {
                 var def = button.Definition;
-                var fold = fnActive && def.FnHidden;
+                var fold = active && isHidden(def);
 
                 var width = def.Width;
-                if (fnActive && !fold && takers.Any(t => ReferenceEquals(t.Button, button)))
+                if (active && !fold && takers.Any(t => ReferenceEquals(t.Button, button)))
                 {
                     width += extra;
                 }
@@ -1443,42 +1452,18 @@ public sealed partial class KeyboardWindow : Window
     }
 
     /// <summary>
-    /// パスワード欄での段の構成を反映する。
+    /// 長押しリピートの遅延・間隔を全キーへ設定し直す。設定画面から呼ぶ。
     ///
-    /// パスワード欄では IME の入／切が意味を持たない（直接入力に固定され、
-    /// 切り替える必要がない）ため ImeOn/ImeOff を畳み、空いた幅をスペースキーへ
-    /// 渡して押しやすさを保つ。<see cref="ApplyFnLayout"/> と同じ形。
+    /// <see cref="BuildKey"/> でキーを作る時点の設定しか反映されず、以前は
+    /// キーボードの再起動が必要だった。既存のボタンへ直接設定し直せば足りる。
     /// </summary>
-    private void ApplyPasswordLayout(bool passwordActive)
+    public void RefreshRepeatTiming()
     {
-        foreach (var cells in _passwordRows)
+        var (delay, interval) = KeyRepeat.Resolve(_settings.RepeatDelayMs, _settings.RepeatIntervalMs);
+
+        foreach (var button in _buttons)
         {
-            var folded = cells
-                .Where(cell => cell.Button.Definition.PasswordHidden)
-                .Sum(cell => cell.Button.Definition.Width);
-
-            var takers = cells
-                .Where(cell => cell.Button.Definition.PasswordWidthTaker)
-                .ToList();
-
-            if (folded <= 0 || takers.Count == 0) continue;
-
-            var extra = folded / takers.Count;
-
-            foreach (var (column, button) in cells)
-            {
-                var def = button.Definition;
-                var fold = passwordActive && def.PasswordHidden;
-
-                var width = def.Width;
-                if (passwordActive && !fold && takers.Any(t => ReferenceEquals(t.Button, button)))
-                {
-                    width += extra;
-                }
-
-                column.Width = new GridLength(fold ? 0 : width, GridUnitType.Star);
-                button.Visibility = fold ? Visibility.Collapsed : Visibility.Visible;
-            }
+            button.SetRepeatTiming(delay, interval);
         }
     }
 

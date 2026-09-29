@@ -293,7 +293,10 @@ public sealed partial class SettingsWindow : Window
             if (combo.SelectedItem is not ComboBoxItem { Tag: AutoShowPolicy selected }) return;
 
             _settings.SetPolicy(path, selected);
-            Notify("アプリごとの扱いは、キーボードを再起動すると反映されます。");
+
+            // FocusWatcher は毎回 AppSettings.PolicyFor を読みに行くため、
+            // 次にそのアプリへフォーカスが移った時点から反映される。再起動は不要。
+            Notify("アプリごとの扱いを変更しました。次にそのアプリへフォーカスが移ったときから反映されます。");
         };
 
         return new SettingsCard
@@ -400,7 +403,7 @@ public sealed partial class SettingsWindow : Window
 
             _settings.RepeatDelayMs = ToNullableInt(RepeatDelayBox.Value);
             _settings.Save();
-            Notify("リピートの設定は、キーボードを再起動すると反映されます。");
+            _keyboard.RefreshRepeatTiming();
         };
 
         RepeatIntervalBox.ValueChanged += (_, _) =>
@@ -409,7 +412,7 @@ public sealed partial class SettingsWindow : Window
 
             _settings.RepeatIntervalMs = ToNullableInt(RepeatIntervalBox.Value);
             _settings.Save();
-            Notify("リピートの設定は、キーボードを再起動すると反映されます。");
+            _keyboard.RefreshRepeatTiming();
         };
 
         OpenLogButton.Click += (_, _) => Open(TraceLog.Path);
