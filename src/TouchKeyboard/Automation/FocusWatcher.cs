@@ -99,6 +99,108 @@ public sealed class FocusWatcher : IDisposable
     private AutomationElement? _manuallyHiddenElement;
 
     /// <summary>
+    /// 手動で隠した時刻。0 なら該当なし（自動で隠れた、または表示し直した）。
+    ///
+    /// 要素そのものでの抑制（<see cref="_manuallyHiddenElement"/>）だけでは足りない。
+    /// アプリはフォーカスを自分で入力欄へ動かすことがあり、それを利用者の操作と
+    /// 読んで出し直してしまう。実機の trace.log で確認した例：ターミナルで手動で
+    /// 隠したあと、ブラウザの入力欄ではない場所を触ると、ページが自分で tiptap の
+    /// エディタへフォーカスを移し、そのまま表示されていた（利用者の報告：
+    /// 「手動で非表示にしたあとに勝手に表示されてしまう場合があります」）。
+    ///
+    /// 手動で隠したあとは、OS 標準のタッチキーボードと同じく、利用者が入力欄
+    /// そのものをタップしたときだけ出す。画面のどこかに触れただけでは出さない
+    /// （触れたら解くようにした最初の対処では、この例を防げなかった）。
+    /// 物理キーボードやマウスで操作している間はもともと自動では出さないので、
+    /// タッチとペンだけを見れば足りる。
+    /// </summary>
+    private long _manuallyHiddenAt;
+
+    /// <summary>
+    /// 手動で隠したあと、アプリが自分でフォーカスを移した入力欄。
+    /// 出さずに覚えておき、あとでここをタップされたら出す。
+    /// </summary>
+    private AutomationElement? _pendingInput;
+
+    /// <summary>最後にタップされた位置（物理ピクセル）と時刻。<see cref="NotifyTouched"/> で控える。</summary>
+    private (int X, int Y)? _lastTapPoint;
+
+    private long _lastTapAt;
+
+    /// <summary>手動で隠したまま、まだ出し直していないか。</summary>
+    private bool InManualSuppression =>
+        _manuallyHiddenAt != 0 && IsKeyboardShown?.Invoke() != true;
+
+    /// <summary>
+    /// 入力欄から離れたことで自動で隠れた時刻。0 なら該当なし。
+    ///
+    /// Web ページには、入力欄の外をタップしてもすぐ自分で入力欄へフォーカスを
+    /// 戻すものがある。実機の trace.log で確認した例：Edge でページをタップすると
+    /// 読み取り専用の文書へフォーカスが移って隠れ、約 0.6 秒後に触れてもいない
+    /// 入力欄（Edit class=""）へフォーカスが戻って出し直す、を繰り返していた
+    /// （利用者の報告：「キーボードを非表示にしても繰り返し出てきていました」）。
+    /// 隠した直後の揺れを見逃す猶予（<see cref="SettleAfterHideMs"/>）は 0.5 秒で、
+    /// それより遅い揺り戻しには効かない。
+    ///
+    /// 手動で隠したとき（<see cref="_manuallyHiddenAt"/>）と同じく、入力欄そのものを
+    /// タップするまでは出さない。ただし同じウィンドウの中に限る。別のウィンドウへ
+    /// 移った先の入力欄は、これまでどおりの判定に任せる。
+    /// </summary>
+    private long _focusLostHiddenAt;
+
+    /// <summary>入力欄から離れて隠れたときの、入力先のウィンドウ。</summary>
+    private nint _focusLostWindow;
+
+    /// <summary>
+    /// 入力欄から離れたことによる非表示を求めている最中か。
+    /// 続けて届く <see cref="NotifyHidden"/> が、その結果かを見分けるために使う。
+    /// </summary>
+    private bool _hidingForFocusLoss;
+
+    /// <summary>
+    /// 隠れる直前のタップも、入力欄を触ったものとして数える範囲。
+    ///
+    /// 入力欄をタップしても、いったん別の要素を経由してから入力欄へ移るアプリがある。
+    /// その場合はタップのあとに隠れ、そのあと入力欄にフォーカスが来る。
+    /// </summary>
+    private const int TapBeforeHideMs = 1000;
+
+    /// <summary>入力欄から離れて隠れたまま、同じウィンドウにいるか。</summary>
+    private bool InFocusLostSuppression(nint window) =>
+        _focusLostHiddenAt != 0 && window == _focusLostWindow && IsKeyboardShown?.Invoke() != true;
+
+    /// <summary>手動で隠した扱いを終える。何かの理由で表示したとき。</summary>
+    private void EndManualSuppression()
+    {
+        _manuallyHiddenAt = 0;
+        _focusLostHiddenAt = 0;
+        _pendingInput = null;
+    }
+
+    /// <summary>
+    /// <paramref name="since"/> より後に、利用者がこの要素そのものをタップしたか。
+    ///
+    /// フォーカスの通知とタップの確定はどちらが先に届くか決まっていない。
+    /// タップが先ならここで拾い、通知が先なら <see cref="_pendingInput"/> に
+    /// 覚えておいて <see cref="NotifyTouched"/> 側で拾う。
+    /// </summary>
+    private bool WasTappedSince(AutomationElement element, long since)
+    {
+        if (_lastTapPoint is not { } tap || _lastTapAt <= since) return false;
+
+        var bounds = BoundsOf(element);
+        return !bounds.IsEmpty && bounds.Contains(tap.X, tap.Y);
+    }
+
+    /// <summary>手動で隠したあとに、利用者がこの要素そのものをタップしたか。</summary>
+    private bool WasTappedAfterManualHide(AutomationElement element) =>
+        WasTappedSince(element, _manuallyHiddenAt);
+
+    /// <summary>入力欄から離れて隠れたころ以降に、利用者がこの要素そのものをタップしたか。</summary>
+    private bool WasTappedAroundFocusLostHide(AutomationElement element) =>
+        WasTappedSince(element, _focusLostHiddenAt - TapBeforeHideMs);
+
+    /// <summary>
     /// 対象外のアプリの入力欄にフォーカスが移った時刻。0 なら該当なし。
     /// あとから利用者が意図的に触ったかを、この時刻との前後で判断する。
     /// </summary>
@@ -112,6 +214,12 @@ public sealed class FocusWatcher : IDisposable
     /// 触られた場所がこの中かどうかで、その入力欄を押したのかを判断する。
     /// </summary>
     private System.Windows.Rect _excludedInputBounds;
+
+    /// <summary>
+    /// 対象外のアプリの入力欄が文書（Document）だったか。
+    /// ペンで触られたときに出さないために使う（<see cref="IsPenOnDocument"/> 参照）。
+    /// </summary>
+    private bool _excludedInputIsDocument;
 
     /// <summary>
     /// 意図的に出したときの相手プロセス。0 なら該当なし。
@@ -164,6 +272,38 @@ public sealed class FocusWatcher : IDisposable
     public Func<bool>? IsKeyboardShown { get; set; }
 
     /// <summary>
+    /// 最後に画面へ触れたのがペンだったか返す。App が差し込む。
+    /// <see cref="IsPenOnDocument"/> 参照。
+    /// </summary>
+    public Func<bool>? LastContactWasPen { get; set; }
+
+    /// <summary>
+    /// ペンで文書（Document）に触れた結果のフォーカスか。
+    ///
+    /// OneNote ではペンで書くたびに、キャンバスから本文の枠（OneNote::ContentOutline、
+    /// 編集できる Document）へフォーカスが移る。入力欄として数えると、書いている
+    /// だけで表示されてしまう（実機の trace.log で確認。利用者の報告：「OneNote に
+    /// 手書きで書いているだけなのに勝手に表示されてしまいます」）。
+    ///
+    /// ペンを一律に除外はしない。手動で隠したあとにペンで入力欄を触り直しても
+    /// 出なくなる不具合を起こしたことがある。1 行の入力欄（Edit、ComboBox）は
+    /// ペンで触っても従来どおり出し、紙面のように書き込む文書だけを外す。
+    /// </summary>
+    private bool IsPenOnDocument(AutomationElement element)
+    {
+        if (LastContactWasPen?.Invoke() != true) return false;
+
+        try
+        {
+            return element.Current.ControlType == ControlType.Document;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// 実行ファイルのパスから、そのアプリの自動表示の扱いを返す。App が差し込む。
     /// 未登録のアプリは呼ばれた側で登録される。
     /// </summary>
@@ -179,7 +319,18 @@ public sealed class FocusWatcher : IDisposable
         _hideTimer.Tick += (_, _) =>
         {
             TraceLog.Write("  -> 非表示を実行");
-            HideRequested?.Invoke(this, EventArgs.Empty);
+
+            // 隠れれば、この中で NotifyHidden が呼ばれる（同じ UI スレッドで続けて走る）。
+            _hidingForFocusLoss = true;
+
+            try
+            {
+                HideRequested?.Invoke(this, EventArgs.Empty);
+            }
+            finally
+            {
+                _hidingForFocusLoss = false;
+            }
         };
 
         _reevaluateTimer = queue.CreateTimer();
@@ -213,13 +364,32 @@ public sealed class FocusWatcher : IDisposable
     {
         if (!IsRunning) return;
 
+        if (point is not null)
+        {
+            _lastTapPoint = point;
+            _lastTapAt = Environment.TickCount64;
+        }
+
         // 手動で隠した、まさにその入力欄を触り直したなら、隠した意思より
         // いまの操作を優先する。触れた位置はここでしか分からないため、
         // Reevaluate 側の要素比較とは別に、ここで位置を突き合わせて判断する。
         if (TryShowManuallyHiddenTouched(point)) return;
 
+        // 手動で隠したあとにアプリが移した入力欄を、いま触った。
+        if (TryShowPendingInputTouched()) return;
+
         if (_excludedInputAt == 0) return;
         if (Environment.TickCount64 - _excludedInputAt < DeliberateTouchDelayMs) return;
+
+        // ペンで書き込める文書に触れただけなら、入力欄を押したことにしない。
+        // 実機の trace.log で確認した例：厳密にした OneNote で、本文の枠
+        // （ContentOutline）を覚えたあとにペンで書くと、枠の中を触ったとして
+        // 表示されていた（IsPenOnDocument はフォーカスの判定にしか効いていなかった）。
+        if (_excludedInputIsDocument && LastContactWasPen?.Invoke() == true)
+        {
+            TraceLog.Write("  -> 表示せず（ペンで文書に書いた）");
+            return;
+        }
 
         // 触り続けている間に何度も走らせない。次の判定の基準を今に進める。
         _excludedInputAt = Environment.TickCount64;
@@ -255,6 +425,9 @@ public sealed class FocusWatcher : IDisposable
     {
         if (_manuallyHiddenElement is null || point is not { } touched) return false;
 
+        // ペンで文書に書き込んだだけなら、触り直したことにしない。
+        if (IsPenOnDocument(_manuallyHiddenElement)) return false;
+
         var bounds = BoundsOf(_manuallyHiddenElement);
         if (bounds.IsEmpty || !bounds.Contains(touched.X, touched.Y)) return false;
 
@@ -272,6 +445,37 @@ public sealed class FocusWatcher : IDisposable
 
         _manuallyHiddenElement = null;
         Show("手動で隠した入力欄を自分で触り直した", processId);
+        return true;
+    }
+
+    /// <summary>
+    /// 手動で隠したあとに覚えておいた入力欄を、いまタップしたかを見る。
+    /// 該当すれば表示して true を返す。
+    /// </summary>
+    private bool TryShowPendingInputTouched()
+    {
+        if (_pendingInput is not { } pending) return false;
+        if (IsPenOnDocument(pending)) return false;
+
+        var tapped =
+            InManualSuppression ? WasTappedAfterManualHide(pending) :
+            _focusLostHiddenAt != 0 && IsKeyboardShown?.Invoke() != true && WasTappedAroundFocusLostHide(pending);
+
+        if (!tapped) return false;
+
+        int processId;
+
+        try
+        {
+            processId = pending.Current.ProcessId;
+        }
+        catch (ElementNotAvailableException)
+        {
+            _pendingInput = null;
+            return false;
+        }
+
+        Show("隠れたあと入力欄を自分で触った", processId);
         return true;
     }
 
@@ -313,6 +517,7 @@ public sealed class FocusWatcher : IDisposable
 
         TraceLog.Write($"  -> 表示（{reason}）");
 
+        EndManualSuppression();
         _hideTimer.Stop();
 
         if (IsKeyboardShown?.Invoke() != true) _dockSettledAt = Environment.TickCount64;
@@ -344,6 +549,12 @@ public sealed class FocusWatcher : IDisposable
             if (!LooksLikeTextInput(element))
             {
                 TraceLog.Write("  -> 表示せず（触った先が入力欄ではない）");
+                return;
+            }
+
+            if (IsPenOnDocument(element))
+            {
+                TraceLog.Write("  -> 表示せず（ペンで文書に書いた）");
                 return;
             }
 
@@ -391,12 +602,31 @@ public sealed class FocusWatcher : IDisposable
         // キーボードが表示される」）。
         _deliberateProcessId = 0;
 
+        _manuallyHiddenAt = manual ? _hiddenAt : 0;
+        _pendingInput = null;
+
+        // 入力欄から離れたことによる自動の非表示か。そうなら、同じウィンドウで
+        // 入力欄をタップし直すまで出し直さない（_focusLostHiddenAt 参照）。
+        _focusLostHiddenAt = !manual && _hidingForFocusLoss ? _hiddenAt : 0;
+        _focusLostWindow = _lastInputWindow;
+
         if (!manual) return;
 
         try
         {
             var element = AutomationElement.FocusedElement;
-            _manuallyHiddenElement = element?.Current.ProcessId == _ownProcessId ? null : element;
+
+            // 覚えるのは入力欄だけ。OneNote のキャンバスのように紙面全体を覆う要素を
+            // 覚えると、その中のどこを触っても「隠した入力欄を触り直した」ことになり、
+            // 出し直してしまう（実機の trace.log で確認）。
+            _manuallyHiddenElement =
+                element is null
+                || element.Current.ProcessId == _ownProcessId
+                || !LooksLikeTextInput(element)
+                    ? null
+                    : element;
+
+            TraceLog.Write($"手動で非表示  要素={(_manuallyHiddenElement is null ? "(なし)" : Describe(_manuallyHiddenElement))}");
         }
         catch (Exception)
         {
@@ -501,10 +731,23 @@ public sealed class FocusWatcher : IDisposable
 
         /// <summary>それ以外。入力をやめたとみなす。</summary>
         Other,
+
+        /// <summary>
+        /// 入力欄を名乗るが入力を受け付けない要素。出しも隠しもしない。
+        /// <see cref="IsPhantomEdit"/> 参照。
+        /// </summary>
+        Ignored,
     }
 
     private FocusKind Classify(AutomationElement element)
     {
+        if (IsPhantomEdit(element)) return FocusKind.Ignored;
+
+        // ペンで書き込める文書に触れた。書いているのであって、打とうとしてはいない。
+        // 出しも隠しもしない（出ているものを消すと、指で打ちながらペンで書き足す
+        // 使い方を妨げる）。
+        if (IsPenOnDocument(element) && LooksLikeTextInput(element)) return FocusKind.Ignored;
+
         // 対象外のアプリは入力欄であっても出さない。入力をやめたのと同じ扱いにして、
         // 出ているキーボードは引っ込める。
         var processId = element.Current.ProcessId;
@@ -533,6 +776,7 @@ public sealed class FocusWatcher : IDisposable
 
             // 入力欄の位置も覚えておく。あとで触られた場所と突き合わせる。
             _excludedInputBounds = input ? BoundsOf(element) : System.Windows.Rect.Empty;
+            _excludedInputIsDocument = input && element.Current.ControlType == ControlType.Document;
 
             return FocusKind.Other;
         }
@@ -619,6 +863,13 @@ public sealed class FocusWatcher : IDisposable
             $"focus  kind={kind,-9} window=0x{window:X} owner=0x{WindowStyles.RootOwner(window):X} "
             + $"lastInput=0x{_lastInputWindow:X}  {detail}");
 
+        // 入力を受け付けない Edit か、ペンで書き込める文書。抑制の状態も含め、何も変えない。
+        if (kind == FocusKind.Ignored)
+        {
+            TraceLog.Write("  -> 無視（キーボードで操作できない Edit、またはペンで文書に書いた）");
+            return;
+        }
+
         // 手動で隠した、まさにその要素のままなら出し直さない。
         //
         // フォーカスは動いていないので、これは UI Automation の本物の通知ではなく
@@ -629,6 +880,25 @@ public sealed class FocusWatcher : IDisposable
         if (kind == FocusKind.Input && IsManuallyHiddenElement(element))
         {
             TraceLog.Write("  -> 中立（手動で隠した入力欄のまま）");
+            return;
+        }
+
+        // 手動で隠したあとは、その入力欄そのものをタップされたときだけ出す。
+        // それ以外の入力欄への移動はアプリ自身が起こしたものとみなす
+        // （_manuallyHiddenAt 参照）。要素の抑制は残す。
+        if (kind == FocusKind.Input && InManualSuppression && !WasTappedAfterManualHide(element))
+        {
+            _pendingInput = element;
+            TraceLog.Write("  -> 中立（手動で隠したあと、入力欄をタップしていない）");
+            return;
+        }
+
+        // 入力欄から離れて隠れたあと、同じウィンドウでアプリが自分で入力欄へ
+        // フォーカスを戻しただけなら出し直さない（_focusLostHiddenAt 参照）。
+        if (kind == FocusKind.Input && InFocusLostSuppression(window) && !WasTappedAroundFocusLostHide(element))
+        {
+            _pendingInput = element;
+            TraceLog.Write("  -> 中立（入力欄から離れて隠れたあと、入力欄をタップしていない）");
             return;
         }
 
@@ -665,6 +935,8 @@ public sealed class FocusWatcher : IDisposable
             // 既に出ているなら、これは Omnibox のような焦点変更の re-fire。
             // AppBar も相手のレイアウトも動かさないので、ゆれの猶予は取り直さない。
             if (IsKeyboardShown?.Invoke() != true) _dockSettledAt = Environment.TickCount64;
+
+            EndManualSuppression();
 
             _lastInputWindow = window;
             _shownAt = Environment.TickCount64;
@@ -755,6 +1027,25 @@ public sealed class FocusWatcher : IDisposable
     }
 
     /// <summary>
+    /// 種別は Edit だが、キーボードで操作できず、テキストとしても扱えない要素か。
+    ///
+    /// 実機の trace.log で確認した例：ブラウザの tiptap エディタを使っている間、
+    /// 同じページの Edit（class="" text=False kbFocusable=False）へフォーカスが
+    /// 移ることがある。画面に触れていなくても起き、入力欄として数えると
+    /// 隠れているキーボードが勝手に出る。入力欄ではない側に数えると、今度は
+    /// 打っている最中に隠れる（エディタへ戻る前に非表示が走る）。
+    /// どちらにも数えず、出しも隠しもしない。
+    /// </summary>
+    private static bool IsPhantomEdit(AutomationElement element)
+    {
+        var current = element.Current;
+
+        return current.ControlType == ControlType.Edit
+            && !current.IsKeyboardFocusable
+            && !HasPattern(element, AutomationElement.IsTextPatternAvailableProperty);
+    }
+
+    /// <summary>
     /// 入力欄とみなせるか。
     ///
     /// 種別だけでは取りこぼす。Web ページやカスタムコントロールは
@@ -793,9 +1084,17 @@ public sealed class FocusWatcher : IDisposable
             return true;
         }
 
-        // 編集できるコンボボックス。値パターンだけを持つ場合がある。
+        // 編集できるコンボボックス。キーボードで操作できないと申告していても、
+        // テキストとして扱えるなら入力欄とみなす。
+        //
+        // 値パターンだけでは判断しない。選ぶだけのコンボボックスも値を持つ。
+        // 実機の trace.log で確認した例：Edge で Web ページの select を開くと、
+        // ComboBox（class="" text=False）として値パターン付きで見えており、
+        // 入力欄として数えて表示していた（利用者の報告：「Edge で表示している
+        // Web ページ内の select を表示するとキーボードが表示されてしまいます」）。
+        // 文字を打てるもの（Google や YouTube の検索欄など）は text=True で分かれる。
         return type == ControlType.ComboBox
-            && HasPattern(element, AutomationElement.IsValuePatternAvailableProperty);
+            && HasPattern(element, AutomationElement.IsTextPatternAvailableProperty);
     }
 
     /// <summary>実行ファイルのパスを引くのは重いので覚えておく。監視スレッドから呼ばれる。</summary>

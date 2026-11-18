@@ -21,14 +21,20 @@
         </Grid.RowDefinitions>
 
         <!--
-            背の高いタイトルバー（48）。中身をここまで広げ、この帯を掴む場所として渡す。
+            背の高いタイトルバー（48）。WinUI Gallery と同じ組み方にする。
+            この帯を掴む場所として渡す（SettingsWindow.xaml.cs の SetTitleBar）。
 
-            高さは明示する。WinUI Gallery の TitleBarWindow サンプルは明示していないが、
-            SettingsWindow.xaml.cs 側で PreferredHeightOption を SetTitleBar より先に
-            設定する順序に直したうえで Height なしを試しても、実機では低いままだった。
-            PreferredHeightOption は AppWindow 側（最小化・最大化・閉じるボタンの高さなど、
-            OS が描く非クライアント領域）を決めるだけで、こちら側の XAML の行の高さには
-            効かないと判断し、48 を明示する方針に確定する。
+            高さは指定しない。TitleBar は中身（Content）を持たないと 32 の低い並びになり、
+            持つと 48 の並びになる。以前は Height="48" で引き伸ばしていたが、それでは
+            低い並びのまま帯だけが伸び、折りたたみボタンが小さく浮いて見えた。
+            空の中身を持たせれば TitleBar 自身の 48 の並びになり、折りたたみボタンの
+            大きさと位置も WinUI Gallery と揃う。空の中身の部分も掴んで動かせる。
+            （ModernFlyouts の設定画面で確かめた組み方に合わせた。）
+
+            最小化・閉じるボタンの高さは別物で、SettingsWindow.xaml.cs の
+            PreferredHeightOption（Tall）が決める。
+
+            タイトルはアプリ名、副題は「設定」。どのアプリの設定かが一目で分かる。
 
             折りたたみボタンは WinUI 純正の TitleBar が持つもの（IsPaneToggleButtonVisible /
             PaneToggleRequested）を使う。タイトルバー領域に自前の Button を置いて
@@ -38,23 +44,32 @@
         -->
         <TitleBar x:Name="AppTitleBar"
                   Grid.Row="0"
-                  Height="48"
-                  Title="TouchKeyboard の設定"
+                  Title="TouchKeyboard"
+                  Subtitle="設定"
+                  IsBackButtonVisible="False"
                   IsPaneToggleButtonVisible="True"
                   PaneToggleRequested="AppTitleBar_PaneToggleRequested">
+            <TitleBar.Content>
+                <Grid />
+            </TitleBar.Content>
             <TitleBar.IconSource>
-                <FontIconSource Glyph="&#xE765;" />
+                <!-- タスクトレイ・Alt+Tab と同じアプリのアイコン。ms-appx:/// は exe のある場所が起点。 -->
+                <ImageIconSource ImageSource="ms-appx:///Assets/AppIcon.ico" />
             </TitleBar.IconSource>
         </TitleBar>
 
+        <!--
+            IsTitleBarAutoPaddingEnabled は切る。タイトルバーは上の行の TitleBar が受け持つので、
+            NavigationView がタイトルバーの分として上に足す余白は要らない。
+        -->
         <NavigationView x:Name="Nav"
                         Grid.Row="1"
                         Background="Transparent"
                         PaneDisplayMode="Left"
-                        OpenPaneLength="320"
                         IsSettingsVisible="False"
                         IsBackButtonVisible="Collapsed"
-                        IsPaneToggleButtonVisible="False">
+                        IsPaneToggleButtonVisible="False"
+                        IsTitleBarAutoPaddingEnabled="False">
 
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="表示" Tag="display" IsSelected="True">
@@ -81,6 +96,15 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
+
+            <!-- Windows の設定や ModernFlyouts と同じく、バージョン情報は下に分けて置く。 -->
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="バージョン情報" Tag="about">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE946;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
 
             <!--
                 横方向の送りは切る。切らないと、中身を測るときの幅が無限として渡り、
@@ -112,11 +136,17 @@
                     <StackPanel x:Name="DisplaySection" Spacing="4">
                         <tk:SettingsCard Header="キー配列"
                                          Description="クラシックは物理の JIS 109 配列そのまま。モダンはファンクション段を省き、Esc を半角/全角の位置に、F1〜F12 を Fn + 数字に置きます。">
+                            <tk:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE765;" />
+                            </tk:SettingsCard.HeaderIcon>
                             <ComboBox x:Name="LayoutCombo" MinWidth="220" />
                         </tk:SettingsCard>
 
                         <tk:SettingsCard Header="高さ"
                                          Description="キーボードの高さ。画面の半分までに制限されます。配列・浮かせているか・モニタ・画面の向きごとに別々に覚えます。">
+                            <tk:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE746;" />
+                            </tk:SettingsCard.HeaderIcon>
                             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                 <TextBlock x:Name="HeightValue" VerticalAlignment="Center" MinWidth="64"
                                            HorizontalTextAlignment="Right" />
@@ -128,16 +158,25 @@
 
                         <tk:SettingsCard Header="タスクバーを覆う"
                                          Description="画面下端まで広げます。確保する作業領域は変わりません。">
+                            <tk:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE740;" />
+                            </tk:SettingsCard.HeaderIcon>
                             <ToggleSwitch x:Name="CoverTaskbarToggle" />
                         </tk:SettingsCard>
 
                         <tk:SettingsCard Header="ドッキング先"
                                          Description="キーボードを表示するモニタ。">
+                            <tk:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE7F4;" />
+                            </tk:SettingsCard.HeaderIcon>
                             <ComboBox x:Name="MonitorCombo" MinWidth="220" />
                         </tk:SettingsCard>
 
                         <tk:SettingsCard Header="背景の素材"
                                          Description="標準タッチキーボードは Acrylic を使っています。Mica は壁紙を素材にするため、下のウィンドウは見えません。">
+                            <tk:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE771;" />
+                            </tk:SettingsCard.HeaderIcon>
                             <ComboBox x:Name="BackdropCombo" MinWidth="220" />
                         </tk:SettingsCard>
                     </StackPanel>
@@ -146,12 +185,18 @@
                     <StackPanel x:Name="AutoShowSection" Spacing="4" Visibility="Collapsed">
                         <tk:SettingsCard Header="入力欄で自動表示"
                                          Description="テキスト入力欄にフォーカスが移ったとき表示します。物理キーボードが使えるときとマウス操作のときは表示しません。">
+                            <tk:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE7C9;" />
+                            </tk:SettingsCard.HeaderIcon>
                             <ToggleSwitch x:Name="AutoShowToggle" />
                         </tk:SettingsCard>
 
                         <tk:SettingsExpander x:Name="RulesExpander"
                                              Header="アプリごとの扱い"
                                              Description="自動表示が起きたアプリは自動で一覧に追加されます。">
+                            <tk:SettingsExpander.HeaderIcon>
+                                <FontIcon Glyph="&#xE71D;" />
+                            </tk:SettingsExpander.HeaderIcon>
                             <tk:SettingsExpander.Items>
                                 <tk:SettingsCard x:Name="NoRulesCard"
                                                  Header="まだ記録がありません"
@@ -165,6 +210,9 @@
                     <StackPanel x:Name="KeysSection" Spacing="4" Visibility="Collapsed">
                         <tk:SettingsExpander Header="長押しリピート"
                                              Description="空欄にすると Windows の設定に従います。">
+                            <tk:SettingsExpander.HeaderIcon>
+                                <FontIcon Glyph="&#xE8EE;" />
+                            </tk:SettingsExpander.HeaderIcon>
                             <tk:SettingsExpander.Items>
                                 <tk:SettingsCard Header="開始までの時間"
                                                  Description="ミリ秒。タッチは誤リピートしやすいため、既定は OS 設定より長めです。">
@@ -185,11 +233,17 @@
                     <!-- その他 -->
                     <StackPanel x:Name="OtherSection" Spacing="4" Visibility="Collapsed">
                         <tk:SettingsCard Header="Windows 起動時に開始">
+                            <tk:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE7E8;" />
+                            </tk:SettingsCard.HeaderIcon>
                             <ToggleSwitch x:Name="AutoStartToggle" />
                         </tk:SettingsCard>
 
                         <tk:SettingsExpander Header="動作の記録"
                                              Description="表示・非表示の判断を書き出します。不具合を追うときだけ有効にしてください。">
+                            <tk:SettingsExpander.HeaderIcon>
+                                <FontIcon Glyph="&#xE81C;" />
+                            </tk:SettingsExpander.HeaderIcon>
                             <ToggleSwitch x:Name="TraceToggle" />
 
                             <tk:SettingsExpander.Items>
@@ -205,7 +259,77 @@
 
                         <tk:SettingsCard Header="設定ファイル"
                                          Description="%APPDATA%\TouchKeyboard\settings.json">
+                            <tk:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8A5;" />
+                            </tk:SettingsCard.HeaderIcon>
                             <Button x:Name="OpenSettingsButton" Content="フォルダーを開く" />
+                        </tk:SettingsCard>
+                    </StackPanel>
+
+                    <!-- バージョン情報 -->
+                    <StackPanel x:Name="AboutSection" Spacing="4" Visibility="Collapsed">
+                        <!-- 説明文は SettingsWindow.xaml.cs でバージョンを入れる。 -->
+                        <tk:SettingsExpander x:Name="AppCard" Header="TouchKeyboard" IsExpanded="True">
+                            <tk:SettingsExpander.HeaderIcon>
+                                <ImageIcon Source="ms-appx:///Assets/AppIcon.ico" />
+                            </tk:SettingsExpander.HeaderIcon>
+                            <tk:SettingsExpander.Items>
+                                <!--
+                                    文字だけの項目は見出し（Header）として書く。Windows Community Toolkit
+                                    Gallery のサンプル（"This is a card with a Header only"）と同じ書き方。
+
+                                    ContentAlignment="Left" の中身に TextBlock を入れていたときは、項目の
+                                    最小の高さの中で文字が下に寄って見えた。サンプルでも Left に入れるのは
+                                    CheckBox のようなコントロールだけで、文字は見出しにしている。
+                                    見出しなら、ほかの項目と同じく最小の高さの中で縦の中央に置かれる。
+                                -->
+                                <tk:SettingsCard Header="ATOK の入力ミス補正に対応したタッチキーボード。ハードウェアキーボード相当のフルレイアウトをタッチで使えます。" />
+                            </tk:SettingsExpander.Items>
+                        </tk:SettingsExpander>
+
+                        <tk:SettingsCard x:Name="RepositoryCard"
+                                         Header="ソースコード"
+                                         Description="LunaProject-Discord/TouchKeyboard（GNU LGPL 2.1）"
+                                         IsClickEnabled="True">
+                            <tk:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE943;" />
+                            </tk:SettingsCard.HeaderIcon>
+                            <tk:SettingsCard.ActionIcon>
+                                <FontIcon Glyph="&#xE8A7;" />
+                            </tk:SettingsCard.ActionIcon>
+                        </tk:SettingsCard>
+
+                        <!--
+                            同梱しているフォント。どちらもライセンス文を同梱する条件で配布されている
+                            （TouchKeyboard.csproj 参照）。押すと同梱のライセンス文を開く。
+                        -->
+                        <!-- 見出しの余白は Windows の設定・WinUI Gallery（ModernFlyouts も同じ）に合わせる。 -->
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   Text="使用しているフォント"
+                                   Margin="1,30,0,6" />
+
+                        <tk:SettingsCard x:Name="GenInterfaceCard"
+                                         Header="Gen Interface JP"
+                                         Description="キーの刻印。SIL Open Font License 1.1"
+                                         IsClickEnabled="True">
+                            <tk:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8D2;" />
+                            </tk:SettingsCard.HeaderIcon>
+                            <tk:SettingsCard.ActionIcon>
+                                <FontIcon Glyph="&#xE8A7;" />
+                            </tk:SettingsCard.ActionIcon>
+                        </tk:SettingsCard>
+
+                        <tk:SettingsCard x:Name="FluentIconsCard"
+                                         Header="Fluent System Icons"
+                                         Description="Caps Lock の南京錠。MIT License"
+                                         IsClickEnabled="True">
+                            <tk:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8D2;" />
+                            </tk:SettingsCard.HeaderIcon>
+                            <tk:SettingsCard.ActionIcon>
+                                <FontIcon Glyph="&#xE8A7;" />
+                            </tk:SettingsCard.ActionIcon>
                         </tk:SettingsCard>
                     </StackPanel>
 

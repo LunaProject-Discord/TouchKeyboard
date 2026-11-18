@@ -29,7 +29,6 @@ namespace TouchKeyboard.Views;
 public sealed partial class KeyboardWindow : Window
 {
     private readonly KeyDispatcher _dispatcher = new();
-    private readonly List<KeyButton> _buttons = [];
     private readonly AppSettings _settings;
 
     /// <summary>押下中のキー。二重送出の防止と、終了時の取りこぼし防止を兼ねる。</summary>
@@ -166,17 +165,100 @@ public sealed partial class KeyboardWindow : Window
     /// <summary>いま実際に出している配列のファイル名。</summary>
     private string? _activeLayoutFile;
 
+    /// <summary>
+    /// 組み立て済みの配列。1 つの配列ぶんのキーと、組み直さずに幅だけを変える行の控え。
+    /// </summary>
+    private sealed class BuiltLayout(LayoutDefinition definition)
+    {
+        public LayoutDefinition Definition { get; } = definition;
+
+        /// <summary>行を並べたグリッド。<c>KeyRoot</c> やテンキーのパネルへ差し込む。</summary>
+        public Grid Root { get; } = new();
+
+        /// <summary>空白を除いたキー。</summary>
+        public List<KeyButton> Buttons { get; } = [];
+
+        /// <summary>
+        /// Fn 段で幅の変わる行。列と、そこに置いたキーを控える。
+        ///
+        /// 組み直さずに幅だけを差し替えるために持つ。組み直すと、Fn を押さえたままの
+        /// キー自身が作り直され、指を離した通知が届かずに押しっぱなしのまま残る。
+        /// </summary>
+        public List<List<(ColumnDefinition Column, KeyButton Button)>> FnRows { get; } = [];
+
+        /// <summary>
+        /// パスワード欄で幅の変わる行。<see cref="FnRows"/> と同じ理由で、
+        /// 組み直さず列だけを差し替えるために持つ。
+        /// </summary>
+        public List<List<(ColumnDefinition Column, KeyButton Button)>> PasswordRows { get; } = [];
+    }
+
+    /// <summary>
+    /// 一度組み立てた配列。ファイル名ごとに控え、次からは差し替えるだけにする。
+    ///
+    /// 出し直すと盤の大きさが変わり、細いときの代わりの配列との間で入れ替わることがある。
+    /// そのたびに定義を読み直してキーを作り直すと、出した直後に描き直しが走る。
+    ///
+    /// 定義ファイルが書き換えられていれば、次に切り替えたときに読み直して組み立て直す。
+    /// 実機でスキャンコードを調整するときに、再起動せずに差し替えられるようにするため。
+    /// </summary>
+    private readonly Dictionary<string, BuiltLayout> _builtLayouts = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 読み込んだ定義と、読んだ時点のファイルの更新日時。
+    /// 組み立てていない配列（細いときに選ばれている側）も含む。
+    /// </summary>
+    private readonly Dictionary<string, (LayoutDefinition Definition, DateTime WrittenAt)> _definitions =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>いま <c>KeyRoot</c> に差し込んでいる配列。</summary>
+    private BuiltLayout? _active;
+
+    private LayoutDefinition DefinitionOf(string file)
+    {
+        var path = LayoutLoader.PathOf(file);
+
+        // ファイルが無ければ 1601 年を返す。控えと食い違うので読み直しに回り、
+        // Load が見つからない旨の例外を投げる。
+        var writtenAt = File.GetLastWriteTimeUtc(path);
+
+        if (_definitions.TryGetValue(file, out var cached) && cached.WrittenAt == writtenAt)
+        {
+            return cached.Definition;
+        }
+
+        // 読めなかったものは控えない。直したファイルを次の切り替えで読み直せる。
+        var definition = LayoutLoader.Load(path);
+        _definitions[file] = (definition, writtenAt);
+        return definition;
+    }
+
+    private BuiltLayout BuiltOf(string file)
+    {
+        var definition = DefinitionOf(file);
+
+        // 定義を読み直していれば、控えは古い定義から組んだもの。作り直す。
+        if (_builtLayouts.TryGetValue(file, out var cached)
+            && ReferenceEquals(cached.Definition, definition))
+        {
+            return cached;
+        }
+
+        var built = Build(definition);
+        _builtLayouts[file] = built;
+        return built;
+    }
+
     private void LoadLayout()
     {
+        BuiltLayout built;
+
         try
         {
-            _selected = LayoutLoader.Load(LayoutLoader.PathOf(_settings.LayoutFile));
+            _selected = DefinitionOf(_settings.LayoutFile);
 
             var file = EffectiveLayoutFile(_selected);
-
-            _layout = string.Equals(file, _settings.LayoutFile, StringComparison.OrdinalIgnoreCase)
-                ? _selected
-                : LayoutLoader.Load(LayoutLoader.PathOf(file));
+            built = BuiltOf(file);
 
             _activeLayoutFile = file;
         }
@@ -190,7 +272,8 @@ public sealed partial class KeyboardWindow : Window
 
             try
             {
-                _layout = _selected = LayoutLoader.LoadDefault();
+                built = BuiltOf(LayoutLoader.DefaultFileName);
+                _selected = built.Definition;
                 _settings.LayoutFile = _activeLayoutFile = LayoutLoader.DefaultFileName;
             }
             catch (Exception fallback)
@@ -200,8 +283,16 @@ public sealed partial class KeyboardWindow : Window
             }
         }
 
+        _active = built;
+        _layout = built.Definition;
+
         Title = $"TouchKeyboard — {_layout.Name}";
-        Populate(KeyRoot, _layout);
+
+        if (!KeyRoot.Children.Contains(built.Root))
+        {
+            KeyRoot.Children.Clear();
+            KeyRoot.Children.Add(built.Root);
+        }
 
         // かなを刻む配列かどうかで、IME を見るかが変わる。
         if (_isShown) StartStateWatch();
@@ -284,19 +375,12 @@ public sealed partial class KeyboardWindow : Window
     }
 
     /// <summary>
-    /// 定義を任意のグリッドへ流し込む。本体とテンキーのパネルで共用する。
+    /// 定義からキーを組み立てる。本体とテンキーのパネルで共用する。
     /// </summary>
-    private void Populate(Grid target, LayoutDefinition layout)
+    private BuiltLayout Build(LayoutDefinition layout)
     {
-        target.Children.Clear();
-        target.RowDefinitions.Clear();
-
-        // 控えは本体の盤のぶんだけ。テンキーを組むときに捨ててしまわないようにする。
-        if (ReferenceEquals(target, KeyRoot))
-        {
-            _fnRows.Clear();
-            _passwordRows.Clear();
-        }
+        var built = new BuiltLayout(layout);
+        var target = built.Root;
 
         // 行の高さは定義の倍率で配分する。ファンクション段だけ低くする、といった指定ができる。
         // overlayPrevious の行は新しい行を消費せず、直前と同じ位置に重ねる。
@@ -321,7 +405,7 @@ public sealed partial class KeyboardWindow : Window
             // 重ねた行は同じ位置のキーとして扱う。結合の判定も同じ並びで行う。
             while (spans.Count <= placements[i]) spans.Add([]);
 
-            var row = BuildRow(definition, layout, spans[placements[i]]);
+            var row = BuildRow(definition, built, spans[placements[i]]);
             Grid.SetRow(row, placements[i]);
 
             // またがる行は下の行にも重なる。重なる位置は相手側がスペーサーで空けてある。
@@ -338,6 +422,8 @@ public sealed partial class KeyboardWindow : Window
 
         // 中央に置く配列では端の列を結び付けない。基準も押し出しも要らない。
         if (!layout.CenterLabels) LinkEdgeKeys(spans);
+
+        return built;
     }
 
     /// <summary>
@@ -411,22 +497,9 @@ public sealed partial class KeyboardWindow : Window
     private static double ExposedRight(KeySpan self, KeySpan other) =>
         Math.Max(0, self.End - other.End) / self.Width;
 
-    /// <summary>
-    /// Fn 段で幅の変わる行。列と、そこに置いたキーを控える。
-    ///
-    /// 組み直さずに幅だけを差し替えるために持つ。組み直すと、Fn を押さえたままの
-    /// キー自身が作り直され、指を離した通知が届かずに押しっぱなしのまま残る。
-    /// </summary>
-    private readonly List<List<(ColumnDefinition Column, KeyButton Button)>> _fnRows = [];
-
-    /// <summary>
-    /// パスワード欄で幅の変わる行。<see cref="_fnRows"/> と同じ理由で、
-    /// 組み直さず列だけを差し替えるために持つ。
-    /// </summary>
-    private readonly List<List<(ColumnDefinition Column, KeyButton Button)>> _passwordRows = [];
-
-    private Grid BuildRow(KeyRow row, LayoutDefinition layout, List<KeySpan> spans)
+    private Grid BuildRow(KeyRow row, BuiltLayout built, List<KeySpan> spans)
     {
+        var layout = built.Definition;
         var grid = new Grid();
         var rowUnits = layout.RowUnits;
         var cells = new List<(ColumnDefinition Column, KeyButton Button)>();
@@ -444,6 +517,7 @@ public sealed partial class KeyboardWindow : Window
             grid.ColumnDefinitions.Add(column);
 
             var button = BuildKey(def, row.Height, layout.StackedLabels);
+            if (!def.Spacer) built.Buttons.Add(button);
             cells.Add((column, button));
 
             // 併記するキーの寄せ方に使う。中心が行の右半分にあるかで決める。
@@ -467,10 +541,10 @@ public sealed partial class KeyboardWindow : Window
         }
 
         // Fn 段で構成の変わる行だけ控える。他の行は幅を触らない。
-        if (cells.Any(cell => cell.Button.Definition.FnHidden)) _fnRows.Add(cells);
+        if (cells.Any(cell => cell.Button.Definition.FnHidden)) built.FnRows.Add(cells);
 
         // パスワード欄で構成の変わる行だけ控える。
-        if (cells.Any(cell => cell.Button.Definition.PasswordHidden)) _passwordRows.Add(cells);
+        if (cells.Any(cell => cell.Button.Definition.PasswordHidden)) built.PasswordRows.Add(cells);
 
         // 行の幅が rowUnits に満たない分は右端の隙間にする。
         // これで行ごとのキー数が違っても縦の位置が揃う。
@@ -486,6 +560,17 @@ public sealed partial class KeyboardWindow : Window
         return grid;
     }
 
+    /// <summary>いま使っている配列とテンキーのキー。状態の描き直しはこれだけに掛ける。</summary>
+    private IEnumerable<KeyButton> LiveButtons =>
+        new[] { _active, _numpad }.OfType<BuiltLayout>().SelectMany(built => built.Buttons);
+
+    /// <summary>
+    /// 組み立てたすべてのキー。控えているだけの配列も含む。
+    /// テーマとリピートの設定はこちらへ掛ける。差し替えたときに古いまま出さないため。
+    /// </summary>
+    private IEnumerable<KeyButton> AllButtons =>
+        _builtLayouts.Values.Append(_numpad).OfType<BuiltLayout>().SelectMany(built => built.Buttons);
+
     private KeyButton BuildKey(KeyDefinition def, double rowHeight, bool stacked = false)
     {
         var button = new KeyButton(def, _theme, rowHeight, stacked);
@@ -500,8 +585,6 @@ public sealed partial class KeyboardWindow : Window
             // その後 Delay を置いて Interval ごとに Click を上げる。
             button.Click += Key_Click;
             button.Released += Key_Released;
-
-            _buttons.Add(button);
         }
 
         return button;
@@ -567,7 +650,7 @@ public sealed partial class KeyboardWindow : Window
             Shell.Background = _theme.PanelBackground;
         }
 
-        foreach (var button in _buttons)
+        foreach (var button in AllButtons)
         {
             button.ApplyTheme(_theme);
         }
@@ -596,7 +679,10 @@ public sealed partial class KeyboardWindow : Window
     /// <summary>ドッキングして作業領域を確保する。</summary>
     private void Dock()
     {
-        _dock?.Dock(_settings.HeightDip, _settings.MonitorDeviceName, _settings.CoverTaskbar);
+        // 表示の途中なら置くだけにして、確保は見えてから行う（Reveal 参照）。
+        _dock?.Dock(
+            _settings.HeightDip, _settings.MonitorDeviceName, _settings.CoverTaskbar,
+            reserve: !_reservePending);
 
         // 上限はモニタ依存なので、ドッキング先が確定してから保存値も丸める。
         if (_dock?.CurrentMonitor is { } monitor)
@@ -669,6 +755,11 @@ public sealed partial class KeyboardWindow : Window
             return;
         }
 
+        // 作業領域は、キーボードが見えてから確保する。先に確保すると、他アプリが
+        // 縮んで空いた帯にまだキーボードが出ておらず、デスクトップの背景が見える。
+        // 見えてから確保すれば、縮んだ分はすでにキーボードが覆っている。
+        if (!_isShown) _reservePending = true;
+
         // 表示する前に付け直す。Show の時点で外れているとフォーカスを奪う。
         EnsureNoActivate();
 
@@ -678,10 +769,24 @@ public sealed partial class KeyboardWindow : Window
 
         if (!_isShown)
         {
+            TraceLog.Write($"キーボードを表示  手動={remember} 省電力={PowerMode.IsLowPower}");
+            _showRequestedAt = Environment.TickCount64;
+
             // 開き直しは初期の見た目から始める。
             ResetToInitialView();
 
-            AppWindow.Show(activateWindow: false);
+            // 描き終えるまでは見せない。初回の Show では、中身が描かれる前に
+            // 白地のウィンドウが出てしまう。
+            WindowStyles.SetCloaked(_hwnd, true);
+
+            // Show するのは初回だけ。以後は隠すときもウィンドウを残し、
+            // クロークで出し入れする（HideKeyboard 参照）。
+            if (!_windowShown)
+            {
+                AppWindow.Show(activateWindow: false);
+                _windowShown = true;
+            }
+
             _isShown = true;
 
             // Show で Z 順とスタイルが戻ることがあるため、両方取り直す。
@@ -690,7 +795,19 @@ public sealed partial class KeyboardWindow : Window
 
             if (!ok) Log("WS_EX_NOACTIVATE を維持できていません", isError: true);
 
-            StartStateWatch();
+            var stateChanged = StartStateWatch();
+
+            // 隠したときと同じ大きさで、描き直すものも無ければ、描画済みの中身が
+            // そのまま使える。待たずに出す。初回や大きさが変わったときは、
+            // 古い中身が一瞬出ないよう描き終えるのを待つ。
+            if (!stateChanged && _hiddenLook is { } look && look == CurrentLook())
+            {
+                Reveal("即時");
+            }
+            else
+            {
+                RevealAfterRender();
+            }
         }
 
         if (!remember) return;
@@ -722,6 +839,133 @@ public sealed partial class KeyboardWindow : Window
         _dispatcher.Modifiers.Clear();
 
         RefreshAllKeys();
+    }
+
+    /// <summary>ウィンドウを一度でも Show したか。以後は Hide せず、クロークで出し入れする。</summary>
+    private bool _windowShown;
+
+    /// <summary>
+    /// クロークを外すまでに待つフレーム数。
+    ///
+    /// Rendering は描く直前に来るため、1 回目では出し直した分がまだ画面に届いていない。
+    /// 2 回目まで待てば、少なくとも 1 フレームは描き終えている。
+    /// </summary>
+    private const int RevealFrames = 2;
+
+    /// <summary>
+    /// フレームが来なかったときに、それでも外すまでの時間。
+    /// クロークを外し損ねると、表示中のはずのキーボードが見えないまま残る。
+    /// </summary>
+    private const int RevealFallbackMs = 150;
+
+    /// <summary>
+    /// 中身の描かれ方を決める条件。大きさ・浮かせているか・載っているモニタ。
+    /// モニタが変われば拡大率が変わることがあり、同じ大きさでも描き直しになる。
+    /// </summary>
+    private readonly record struct Look(int Width, int Height, bool Floating, string? Monitor);
+
+    /// <summary>隠したときの条件。まだ一度も隠していなければ null。</summary>
+    private Look? _hiddenLook;
+
+    private Look CurrentLook()
+    {
+        var size = AppWindow.Size;
+        return new Look(size.Width, size.Height, IsFloating, MonitorInfo.Resolve(null, _hwnd)?.DeviceName);
+    }
+
+    /// <summary>残りの待ちフレーム数。</summary>
+    private int _revealFramesLeft;
+
+    /// <summary>フレームの通知を受け取っているか。</summary>
+    private bool _revealSubscribed;
+
+    private DispatcherQueueTimer? _revealFallback;
+
+    /// <summary>
+    /// 描き終えてからクロークを外す。
+    ///
+    /// 置き直しで大きさが変わると、隠す前の大きさで描いた中身が一瞬出る。
+    /// 次の描画を待ってから見せれば、今の大きさで描いたものだけが出る。
+    /// </summary>
+    private void RevealAfterRender()
+    {
+        if (!_revealSubscribed)
+        {
+            CompositionTarget.Rendering += OnRevealRendering;
+            _revealSubscribed = true;
+        }
+
+        _revealFramesLeft = RevealFrames;
+
+        if (_revealFallback is null)
+        {
+            _revealFallback = DispatcherQueue.CreateTimer();
+            _revealFallback.Interval = TimeSpan.FromMilliseconds(RevealFallbackMs);
+            _revealFallback.IsRepeating = false;
+            _revealFallback.Tick += (_, _) => Reveal("予備のタイマー");
+        }
+
+        _revealFallback.Start();
+    }
+
+    private void OnRevealRendering(object? sender, object e)
+    {
+        if (--_revealFramesLeft > 0) return;
+        Reveal("描画");
+    }
+
+    /// <summary>表示を求められた時刻。クロークを外すまでの時間を記録に残すために持つ。</summary>
+    private long _showRequestedAt;
+
+    /// <param name="via">何を合図に外したか。記録に残す。</param>
+    private void Reveal(string via)
+    {
+        TraceLog.Write(
+            $"  クロークを解除  合図={via} 経過={Environment.TickCount64 - _showRequestedAt}ms "
+            + $"表示中={_isShown} 省電力={PowerMode.IsLowPower}");
+
+        CancelReveal();
+
+        // 待っている間に隠された。出さない。
+        if (!_isShown) return;
+
+        if (!WindowStyles.SetCloaked(_hwnd, false))
+        {
+            // 外せないと見えないまま残る。従来どおり出し直して救う。
+            AppWindow.Show(activateWindow: false);
+            EnsureNoActivate();
+            Log("クロークを解除できません", isError: true);
+        }
+
+        ReservePending();
+    }
+
+    /// <summary>
+    /// 表示の途中で、作業領域の確保を後回しにしているか。
+    /// 置き場所は決まっているが、他アプリの作業領域はまだ変えていない。
+    /// </summary>
+    private bool _reservePending;
+
+    /// <summary>後回しにしていた作業領域の確保を行う。見えてから呼ぶ。</summary>
+    private void ReservePending()
+    {
+        if (!_reservePending) return;
+        _reservePending = false;
+
+        // 浮かせている間は確保しない。
+        if (_isShown && !IsFloating) Dock();
+    }
+
+    private void CancelReveal()
+    {
+        if (_revealSubscribed)
+        {
+            CompositionTarget.Rendering -= OnRevealRendering;
+            _revealSubscribed = false;
+        }
+
+        _revealFramesLeft = 0;
+        _revealFallback?.Stop();
     }
 
     /// <summary>
@@ -760,6 +1004,8 @@ public sealed partial class KeyboardWindow : Window
             return;
         }
 
+        TraceLog.Write($"キーボードを非表示  手動={remember}");
+
         _shownManually = false;
 
         StopStateWatch();
@@ -768,8 +1014,19 @@ public sealed partial class KeyboardWindow : Window
         // 出し直すときは ApplyPlacement が置き直す。ここでは触らない。
         SetStatusVisible(false);
 
-        AppWindow.Hide();
+        // AppWindow.Hide は使わない。隠すとアプリが描画を止め、出し直すたびに
+        // 白地から描き直すことになり、キーが出るまでに間が空く。
+        // クロークならウィンドウは残って描画済みの中身が保たれ、当たり判定からも外れる。
+        CancelReveal();
+        _reservePending = false;
+        WindowStyles.SetCloaked(_hwnd, true);
         _isShown = false;
+
+        // 見えていない間に初期の見た目へ戻しておく。出し直したときに、
+        // 隠した時点の見た目が一瞬残らないようにする。
+        ResetToInitialView();
+
+        _hiddenLook = CurrentLook();
 
         // AppBar を外すと、確保していた分だけ他アプリの作業領域が広がり、
         // 相手が再レイアウトすることがある。そのとき入力欄がフォーカスを
@@ -834,6 +1091,9 @@ public sealed partial class KeyboardWindow : Window
             ApplyPlacement();
             return;
         }
+
+        // 表示の途中。見えた時点で確保し直すので、ここで先に確保しない。
+        if (_reservePending) return;
 
         _dock?.Refresh(_settings.HeightDip, _settings.MonitorDeviceName, _settings.CoverTaskbar);
     }
@@ -1044,15 +1304,16 @@ public sealed partial class KeyboardWindow : Window
     // テンキーのパネル
     // ------------------------------------------------------------------
 
-    /// <summary>テンキーの定義。初回に読み、以降は表示を切り替えるだけ。</summary>
-    private LayoutDefinition? _numpadLayout;
+    /// <summary>テンキー。初回に組み立て、以降は表示を切り替えるだけ。</summary>
+    private BuiltLayout? _numpad;
 
     private bool LoadNumpad()
     {
         try
         {
-            _numpadLayout = LayoutLoader.Load(LayoutLoader.PathOf("numpad.json"));
-            Populate(NumpadRoot, _numpadLayout);
+            _numpad = Build(LayoutLoader.Load(LayoutLoader.PathOf("numpad.json")));
+            NumpadRoot.Children.Clear();
+            NumpadRoot.Children.Add(_numpad.Root);
             return true;
         }
         catch (Exception ex)
@@ -1319,12 +1580,15 @@ public sealed partial class KeyboardWindow : Window
     /// IME の入切・Caps Lock の状態を定期的に確かめる。
     /// 見るのは表示中だけ。隠れている間に問い合わせても使い道が無い。
     /// </summary>
-    private void StartStateWatch()
+    /// <returns>状態が変わってキーを描き直したら true。</returns>
+    private bool StartStateWatch()
     {
         _stateTimer ??= CreateStateTimer();
 
-        PollExternalState();
+        var changed = PollExternalState();
         _stateTimer.Start();
+
+        return changed;
     }
 
     private void StopStateWatch() => _stateTimer?.Stop();
@@ -1339,7 +1603,8 @@ public sealed partial class KeyboardWindow : Window
         return timer;
     }
 
-    private void PollExternalState()
+    /// <returns>状態が変わってキーを描き直したら true。</returns>
+    private bool PollExternalState()
     {
         var changed = false;
 
@@ -1376,6 +1641,8 @@ public sealed partial class KeyboardWindow : Window
         }
 
         if (changed) RefreshAllKeys();
+
+        return changed;
     }
 
     /// <summary>
@@ -1386,7 +1653,7 @@ public sealed partial class KeyboardWindow : Window
     {
         // 押下中のキーも除外しない。押下表示は KeyButton が IsPressed から決めるため、
         // ここで描き直しても押下中の見た目は保たれる。
-        foreach (var button in _buttons)
+        foreach (var button in LiveButtons)
         {
             button.Refresh(
                 LatchOf(button),
@@ -1397,16 +1664,19 @@ public sealed partial class KeyboardWindow : Window
                 _imeOpen);
         }
 
-        ApplyFoldingLayout(
-            _fnRows, _dispatcher.Modifiers.IsFnActive,
-            isHidden: def => def.FnHidden,
-            // 受け取るのは Fn 段を持つ文字キー。Esc や BS のような役割のキーは広げない。
-            isTaker: def => def is { HasFnLayer: true, IsCharacter: true });
+        foreach (var built in new[] { _active, _numpad }.OfType<BuiltLayout>())
+        {
+            ApplyFoldingLayout(
+                built.FnRows, _dispatcher.Modifiers.IsFnActive,
+                isHidden: def => def.FnHidden,
+                // 受け取るのは Fn 段を持つ文字キー。Esc や BS のような役割のキーは広げない。
+                isTaker: def => def is { HasFnLayer: true, IsCharacter: true });
 
-        ApplyFoldingLayout(
-            _passwordRows, _isPasswordField,
-            isHidden: def => def.PasswordHidden,
-            isTaker: def => def.PasswordWidthTaker);
+            ApplyFoldingLayout(
+                built.PasswordRows, _isPasswordField,
+                isHidden: def => def.PasswordHidden,
+                isTaker: def => def.PasswordWidthTaker);
+        }
     }
 
     /// <summary>
@@ -1461,7 +1731,7 @@ public sealed partial class KeyboardWindow : Window
     {
         var (delay, interval) = KeyRepeat.Resolve(_settings.RepeatDelayMs, _settings.RepeatIntervalMs);
 
-        foreach (var button in _buttons)
+        foreach (var button in AllButtons)
         {
             button.SetRepeatTiming(delay, interval);
         }
@@ -1481,6 +1751,25 @@ public sealed partial class KeyboardWindow : Window
     // ------------------------------------------------------------------
     // 終了処理
     // ------------------------------------------------------------------
+
+    /// <summary>
+    /// シャットダウンの前に、ウィンドウを本当に隠す。
+    ///
+    /// 普段はクロークで出し入れしており、隠している間も OS からは表示中の
+    /// ウィンドウに見える。そのままだと、シャットダウンを妨げているアプリとして
+    /// 一覧に出てしまう。終了の直前なので、描画を止めても困らない。
+    /// </summary>
+    public void HideForShutdown()
+    {
+        try
+        {
+            AppWindow.Hide();
+        }
+        catch (Exception)
+        {
+            // 隠せなくても後片付けと終了は続ける。
+        }
+    }
 
     /// <summary>
     /// ABM_REMOVE を確実に通す。呼ばずに終了すると他アプリの作業領域が縮んだまま残る。
@@ -1509,6 +1798,9 @@ public sealed partial class KeyboardWindow : Window
     }
 
     /// <summary>低電力モードが入切した。背景の素材を選び直す。</summary>
-    private void OnEnergySaverStatusChanged(object? sender, object e) =>
+    private void OnEnergySaverStatusChanged(object? sender, object e)
+    {
+        TraceLog.Write($"省電力モードの切り替え  省電力={PowerMode.IsLowPower}");
         DispatcherQueue.TryEnqueue(ApplyBackdrop);
+    }
 }

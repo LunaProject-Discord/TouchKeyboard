@@ -314,12 +314,12 @@ public sealed partial class KeyboardWindow
 
     private bool PrepareNumpad()
     {
-        if (_numpadLayout is null && !LoadNumpad()) return false;
+        if (_numpad is null && !LoadNumpad()) return false;
 
         // キーの大きさを本体と揃える。本体は rowUnits で全幅を割っているので、
         // 同じ 1 ユニットあたりの幅を使えば見た目が揃う。
         var unit = KeyRoot.ActualWidth / (_layout?.RowUnits ?? 15.5);
-        NumpadPanel.Width = (unit * _numpadLayout!.RowUnits) + (PanelInset * 2);
+        NumpadPanel.Width = (unit * _numpad!.Definition.RowUnits) + (PanelInset * 2);
 
         RefreshAllKeys();
         return true;

@@ -18,13 +18,17 @@
   dotnet publish の出力は使わない。TouchKeyboard.pri / *.xbf
   （コンパイル済み XAML）が抜け落ち、Microsoft.UI.Xaml.dll 内部の
   Application.Start() が確率的にクラッシュする不具合を実機で確認した。
+
+  パッケージのバージョンは実行ファイルのファイルバージョンから取る
+  （!(bind.FileVersion.TouchKeyboardExe)）。元は TouchKeyboard.csproj の Version で、
+  ここに数字を書かない。二か所に書くと、上げ忘れたほうがずれる。
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
   <Package Name="TouchKeyboard"
            Manufacturer="Luna Project"
-           Version="1.0.2.0"
+           Version="!(bind.FileVersion.TouchKeyboardExe)"
            UpgradeCode="9752077B-24FC-4F9C-86B4-6F591EA65D85"
            Scope="perMachine"
            Codepage="65001">

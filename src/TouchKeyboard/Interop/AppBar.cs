@@ -98,8 +98,12 @@ public sealed class AppBar : IDisposable
     /// 呼び出し側で別の矩形へ配置する場合は false にする。
     /// true にしたうえで直後にもう一度移動すると、途中の位置が見えてちらつく。
     /// </param>
-    /// <returns>システムが確定した矩形（物理ピクセル）。</returns>
-    public PixelRect Reserve(AppBarEdge edge, PixelRect desired, bool moveWindow = true)
+    /// <param name="commit">
+    /// ABM_SETPOS で確定させるか。false なら問い合わせだけで、他アプリの作業領域は変えない。
+    /// 先にウィンドウを見せてから確保するときに使う。
+    /// </param>
+    /// <returns>システムが確定した（commit が false なら、確定するはずの）矩形（物理ピクセル）。</returns>
+    public PixelRect Reserve(AppBarEdge edge, PixelRect desired, bool moveWindow = true, bool commit = true)
     {
         if (!_registered)
         {
@@ -143,7 +147,7 @@ public sealed class AppBar : IDisposable
         }
 
         // 2. 確定させる。ここで他アプリの作業領域が更新される。
-        NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref data);
+        if (commit) NativeMethods.SHAppBarMessage(NativeMethods.ABM_SETPOS, ref data);
 
         // 3. 返ってきた矩形でウィンドウを配置する。
         if (moveWindow)

@@ -394,6 +394,39 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     internal static extern nint WindowFromPoint(POINT point);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetCursorPos(out POINT point);
+
+    /// <summary>POINTER_INFO。ポインタ（指・ペン・マウス）1 本の状態。</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct POINTER_INFO
+    {
+        public uint pointerType;
+        public uint pointerId;
+        public uint frameId;
+        public uint pointerFlags;
+        public nint sourceDevice;
+        public nint hwndTarget;
+
+        /// <summary>画面上の位置。物理ピクセル。</summary>
+        public POINT ptPixelLocation;
+
+        public POINT ptHimetricLocation;
+        public POINT ptPixelLocationRaw;
+        public POINT ptHimetricLocationRaw;
+        public uint dwTime;
+        public uint historyCount;
+        public int InputData;
+        public uint dwKeyStates;
+        public ulong PerformanceCount;
+        public int ButtonChangeType;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetPointerInfo(uint pointerId, out POINTER_INFO pointerInfo);
+
     // ------------------------------------------------------------------
     // プロセスの問い合わせ
     // ------------------------------------------------------------------
@@ -412,6 +445,23 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool QueryFullProcessImageNameW(
         nint process, uint flags, System.Text.StringBuilder buffer, ref int size);
+
+    // ------------------------------------------------------------------
+    // シャットダウン
+    // ------------------------------------------------------------------
+
+    /// <summary>シャットダウン時の終了順の既定値。アプリケーション向けの範囲（0x100〜0x3FF）の中ほど。</summary>
+    internal const uint SHUTDOWN_LEVEL_DEFAULT = 0x280;
+
+    /// <summary>
+    /// SHUTDOWN_NORETRY。終了に時間がかかっても「このアプリがシャットダウンを妨げています」の
+    /// 画面に出さず、そのまま終了させる。
+    /// </summary>
+    internal const uint SHUTDOWN_NORETRY = 0x00000001;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetProcessShutdownParameters(uint level, uint flags);
 
     [DllImport("user32.dll")]
     internal static extern nint GetAncestor(nint hWnd, uint gaFlags);
@@ -615,6 +665,12 @@ internal static class NativeMethods
 
     /// <summary>DWMWA_USE_IMMERSIVE_DARK_MODE。タイトルバーとフレームを暗くする。</summary>
     internal const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+
+    /// <summary>
+    /// DWMWA_CLOAK。ウィンドウを表示したまま、DWM に合成させない（画面に出さない）。
+    /// 仮想デスクトップで他のデスクトップのウィンドウを隠すのと同じ仕組み。
+    /// </summary>
+    internal const int DWMWA_CLOAK = 13;
 
     /// <summary>DWMWA_WINDOW_CORNER_PREFERENCE。</summary>
     internal const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;

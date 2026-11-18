@@ -15,7 +15,7 @@
       6. wix build で TouchKeyboard.msi を作る
 
     元データは `dotnet publish` の出力ではなく `dotnet build` の出力
-    （src/TouchKeyboard/bin/<Configuration>/.../win-arm64）を使う。
+    （src/TouchKeyboard/bin/<Configuration>/.../win-<Arch>）を使う。
     `dotnet publish` の出力では TouchKeyboard.pri / *.xbf
     （コンパイル済み XAML）が抜け落ち、`Microsoft.UI.Xaml.dll` 内部の
     `Application.Start()` が確率的にクラッシュする不具合を実機で確認したため
@@ -25,6 +25,10 @@
     管理者権限は不要（証明書は CurrentUser ストアに作るだけで、
     信頼ストアへの登録は MSI の実行時、インストールする側の権限で行う）。
 
+.PARAMETER Arch
+    MSI の対象アーキテクチャ（arm64 / x64）。
+    省略時はこの PC の OS のアーキテクチャに合わせる。
+
 .NOTES
     事前に一度だけ:
       dotnet tool install --global wix
@@ -33,10 +37,17 @@
 
 param(
     [string] $Configuration = "Release",
+    [ValidateSet("arm64", "x64")]
+    [string] $Arch,
     [switch] $SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
+
+# エミュレーション下の PowerShell でも、プロセスではなく OS のアーキテクチャを見る。
+if (-not $Arch) {
+    $Arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq "Arm64") { "arm64" } else { "x64" }
+}
 
 $subject   = "CN=Luna Project"
 $friendly  = "Luna Project Code Signing"
@@ -44,7 +55,7 @@ $friendly  = "Luna Project Code Signing"
 $installerDir = $PSScriptRoot
 $projectRoot  = Split-Path -Parent $installerDir
 $csproj       = Join-Path $projectRoot "src\TouchKeyboard\TouchKeyboard.csproj"
-$buildDir     = Join-Path $projectRoot "src\TouchKeyboard\bin\$Configuration\net10.0-windows10.0.19041.0\win-arm64"
+$buildDir     = Join-Path $projectRoot "src\TouchKeyboard\bin\$Configuration\net10.0-windows10.0.19041.0\win-$Arch"
 $certPath     = Join-Path $installerDir "LunaProject.cer"
 $filesWxs     = Join-Path $installerDir "Files.wxs"
 $productWxs   = Join-Path $installerDir "TouchKeyboard.wxs"
@@ -96,8 +107,9 @@ if (-not $SkipBuild) {
         try { $_.Kill(); $_.WaitForExit(5000) } catch { }
     }
 
-    Write-Host "ビルドしています ($Configuration)..." -ForegroundColor Cyan
-    dotnet build $csproj -c $Configuration
+    # csproj は arm64 固定のため、対象アーキテクチャを外から与える。
+    Write-Host "ビルドしています ($Configuration, $Arch)..." -ForegroundColor Cyan
+    dotnet build $csproj -c $Configuration "-p:Platforms=$Arch" "-p:RuntimeIdentifier=win-$Arch"
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } elseif (-not (Test-Path $buildDir)) {
     Write-Host "ビルド出力がありません: $buildDir" -ForegroundColor Red
@@ -110,7 +122,12 @@ $cert = Get-SigningCertificate
 $exe = Join-Path $buildDir "TouchKeyboard.exe"
 Write-Host "署名しています: $exe" -ForegroundColor Cyan
 $result = Set-AuthenticodeSignature -FilePath $exe -Certificate $cert -HashAlgorithm SHA256
-if ($result.Status -ne "Valid") {
+# 証明書をこの PC で信頼していないと、署名は埋め込まれても Status は Valid にならない
+# （UnknownError: 信頼されていないルート証明書）。信頼ストアへの登録は MSI の
+# インストール時に行うため、ビルドする PC では未登録なのが普通。
+# 自分の証明書で署名されていれば成功とみなす。
+$signedByUs = $result.SignerCertificate -and $result.SignerCertificate.Thumbprint -eq $cert.Thumbprint
+if ($result.Status -ne "Valid" -and -not ($result.Status -eq "UnknownError" -and $signedByUs)) {
     Write-Host "署名に失敗しました: $($result.Status) $($result.StatusMessage)" -ForegroundColor Red
     exit 1
 }
@@ -130,7 +147,7 @@ if (Test-Path $filesWxs) { Remove-Item $filesWxs -Force }
 
 Write-Host "MSI をビルドしています..." -ForegroundColor Cyan
 if (Test-Path $msiOut) { Remove-Item $msiOut -Force }
-& wix build $productWxs $filesWxs -arch arm64 -ext WixToolset.Util.wixext -d "BuildDir=$buildDir" -o $msiOut
+& wix build $productWxs $filesWxs -arch $Arch -ext WixToolset.Util.wixext -d "BuildDir=$buildDir" -o $msiOut
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ""

@@ -116,6 +116,27 @@ public partial class App : Application
     /// <summary>その接触が自分のキーボードへのものか。始まった時点で決める。</summary>
     private bool _tapCandidateIsOwnTouch;
 
+    /// <summary>
+    /// 最後に確定した接触がペンだったか。FocusWatcher が、ペンで書いた結果の
+    /// フォーカス移動を入力の合図と取り違えないために使う。
+    /// UI Automation のスレッドからも読まれる。bool の読み書きなので崩れない。
+    /// </summary>
+    private volatile bool _lastContactWasPen;
+
+    /// <summary>
+    /// ペンの報告（ホバーを含む）が最後に届いた時刻。
+    ///
+    /// ペンで書いている間は、手のひらが画面に触れて指の接触として届く。
+    /// 実機の trace.log で確認した例：OneNote でペンで書いていると、手動で隠した
+    /// 直後に指の接触（ペン=False）が本文の枠の中に届き、「隠した入力欄を
+    /// 触り直した」として出し直されていた。ペンが画面の近くにある間の指の接触は
+    /// ペンの続きとみなす（OS のパームリジェクションと同じ考え方）。
+    /// </summary>
+    private long _lastPenActivityAt;
+
+    /// <summary>ペンの報告が途切れてから、指の接触を手のひらとみなすのをやめるまでの時間。</summary>
+    private const long PalmRejectMs = 1000;
+
 
     public App() => InitializeComponent();
 
@@ -129,6 +150,9 @@ public partial class App : Application
             Terminate();
             return;
         }
+
+        // シャットダウンを妨げているアプリとして出さない（ProcessShutdown 参照）。
+        ProcessShutdown.DoNotBlock();
 
         // INPUT 構造体のレイアウト誤りは SendInput を黙って失敗させ、
         // 原因の分かりにくい不具合になる。起動時に検出する。
@@ -297,6 +321,7 @@ public partial class App : Application
         // 表示直後の揺れと利用者の操作を見分けるため、ポインタの最終操作時刻を渡す。
         _focus.LastPointerInputAt = LastForeignPointerAt;
         _focus.IsKeyboardShown = () => _window?.IsShown ?? false;
+        _focus.LastContactWasPen = () => _lastContactWasPen;
         _focus.PolicyFor = path => _settings.PolicyFor(path);
 
         // タッチはマウスフックに届かないので、Raw Input で別に受け取る。
@@ -419,7 +444,7 @@ public partial class App : Application
         // まだ入力欄のままなので即座に表示し直してしまう（隠せない不具合になる）。
         if (_tapCandidateIsOwnTouch) return;
 
-        TraceLog.Write("触れ直しを確認。フォーカスを確認し直す");
+        TraceLog.Write($"触れ直しを確認。フォーカスを確認し直す  ペン={_lastContactWasPen}");
         _focus?.ReevaluateSoon();
 
         // 対象外のアプリの入力欄を、利用者が自分から押した場合は出す。
@@ -473,7 +498,19 @@ public partial class App : Application
             // 取り消す）がそのまま両方を正しく見分ける。書き文字は接触直後から
             // 大きく動くのでタップとしては確定せず、単なるタップは動かないまま
             // 確定する。
+            //
+            // ただし動き量だけでは足りなかった。OneNote では短い画（点や払い）が
+            // タップとして確定するうえ、書くたびにアプリが本文の枠へフォーカスを
+            // 移す。ペンで文書に触れた結果は FocusWatcher 側で入力の合図から外す
+            // （FocusWatcher.IsPenOnDocument 参照）。
             var isConfirmedTouch = touch is { IsTouching: true };
+
+            // ホバーも数える。ペン先が浮いている間に手のひらが先に触れることがある。
+            if (touch is { IsPen: true }) _lastPenActivityAt = Environment.TickCount64;
+
+            // 浮かせたキーボードを指やペンで動かしている間は、画面上の位置をそのまま渡す。
+            // XAML の通知からは指やペンの画面上の位置が読めない（KeyboardWindow.OnRawContact 参照）。
+            if (touch is { IsTouching: true, Point: { } contact }) _window.OnRawContact(contact.X, contact.Y);
 
             // マウス／物理キーから持ち替えたかは、NotifyTouch で LastClickWasMouse が
             // 書き換わる前の値を見る。
@@ -490,6 +527,8 @@ public partial class App : Application
             {
                 _pointer?.NotifyTouch();
                 _lastInputWasPhysicalKey = false;
+                _lastContactWasPen = touch!.Value.IsPen
+                                     || Environment.TickCount64 - _lastPenActivityAt < PalmRejectMs;
             }
 
             // 同じ接触の続きか、新しい接触かを時間の間隔で見分ける。
@@ -547,8 +586,20 @@ public partial class App : Application
         switch (msg)
         {
             // サインアウト・シャットダウン。ここで確保領域を返さないと縮んだまま残る。
+            //
+            // 後片付けだけで終わらせず、プロセスも落とす。キーボードのウィンドウは
+            // 隠している間もクロークで残しており、OS からは表示中のウィンドウに見える。
+            // 残っていると「このアプリがシャットダウンを妨げています」に出てしまう。
+            // 先に本当に隠し、後片付け（監視の解除など時間のかかるものを含む）が
+            // 返ってこなくても Terminate の見張りが落とす。
             case WM_ENDSESSION:
-                if (wParam != 0) Teardown();
+                if (wParam != 0)
+                {
+                    TraceLog.Write("セッション終了。後片付けをして終了する");
+                    _window.HideForShutdown();
+                    Terminate();
+                }
+
                 break;
 
             case WM_SETTINGCHANGE:
