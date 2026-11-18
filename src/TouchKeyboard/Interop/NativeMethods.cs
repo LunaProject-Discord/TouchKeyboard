@@ -616,6 +616,12 @@ internal static class NativeMethods
     /// <summary>DWMWA_USE_IMMERSIVE_DARK_MODE。タイトルバーとフレームを暗くする。</summary>
     internal const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
 
+    /// <summary>
+    /// DWMWA_CLOAK。ウィンドウを表示したまま、DWM に合成させない（画面に出さない）。
+    /// 仮想デスクトップで他のデスクトップのウィンドウを隠すのと同じ仕組み。
+    /// </summary>
+    internal const int DWMWA_CLOAK = 13;
+
     /// <summary>DWMWA_WINDOW_CORNER_PREFERENCE。</summary>
     internal const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
 

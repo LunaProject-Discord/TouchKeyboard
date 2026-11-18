@@ -52,7 +52,14 @@ public sealed class DockManager : IDisposable
     /// </summary>
     /// <param name="heightDip">確保する高さ（DIP）。</param>
     /// <param name="preferredMonitor">ドッキング先モニタのデバイス名。null なら自動。</param>
-    public void Dock(double heightDip, string? preferredMonitor, bool coverTaskbar)
+    /// <param name="reserve">
+    /// 作業領域を確保するか。false なら確保するはずの位置へ置くだけで、
+    /// 他アプリの作業領域は変えない。あとで true でもう一度呼んで確保する。
+    ///
+    /// 表示するときに使う。先に確保すると、他アプリが縮んで空いた帯に
+    /// キーボードがまだ出ておらず、その間デスクトップの背景が見える。
+    /// </param>
+    public void Dock(double heightDip, string? preferredMonitor, bool coverTaskbar, bool reserve = true)
     {
         var monitor = MonitorInfo.Resolve(preferredMonitor, _hwnd);
         if (monitor is null) return;
@@ -65,7 +72,7 @@ public sealed class DockManager : IDisposable
         // ウィンドウの移動はここではさせず、最終的な矩形で 1 回だけ動かす。
         // 2 回動かすと、途中でタスクバーの上に置かれた状態が見えてちらつく。
         var reserved = _appBar.Reserve(
-            AppBarEdge.Bottom, DesiredRect(monitor, heightDip), moveWindow: false);
+            AppBarEdge.Bottom, DesiredRect(monitor, heightDip), moveWindow: false, commit: reserve);
 
         // ドラッグ中の暫定表示を確定後と一致させるために控えておく。
         _bottomOffset = monitor.Bounds.Bottom - reserved.Bottom;

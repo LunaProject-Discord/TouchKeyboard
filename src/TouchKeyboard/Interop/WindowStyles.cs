@@ -88,6 +88,23 @@ public static class WindowStyles
         NativeMethods.SetLayeredWindowAttributes(hwnd, 0, 0, NativeMethods.LWA_ALPHA);
     }
 
+    /// <summary>
+    /// ウィンドウを表示したまま画面から消す、または戻す。
+    ///
+    /// ShowWindow で隠すと、アプリは描画を止め、出し直すたびに一から描き直す。
+    /// その間は白地が見える。クロークなら描画済みの中身が保たれ、戻せば即座に出る。
+    /// クロークしたウィンドウは当たり判定からも外れ、下のウィンドウを触れる。
+    /// </summary>
+    /// <returns>成功したら true。</returns>
+    public static bool SetCloaked(nint hwnd, bool cloaked)
+    {
+        if (hwnd == 0) return false;
+
+        var value = cloaked ? 1 : 0;
+        return NativeMethods.DwmSetWindowAttribute(
+            hwnd, NativeMethods.DWMWA_CLOAK, ref value, sizeof(int)) == 0;
+    }
+
     /// <summary>現在の前面ウィンドウ。</summary>
     public static nint ForegroundWindow() => NativeMethods.GetForegroundWindow();
 

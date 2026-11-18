@@ -679,7 +679,10 @@ public sealed partial class KeyboardWindow : Window
     /// <summary>ドッキングして作業領域を確保する。</summary>
     private void Dock()
     {
-        _dock?.Dock(_settings.HeightDip, _settings.MonitorDeviceName, _settings.CoverTaskbar);
+        // 表示の途中なら置くだけにして、確保は見えてから行う（Reveal 参照）。
+        _dock?.Dock(
+            _settings.HeightDip, _settings.MonitorDeviceName, _settings.CoverTaskbar,
+            reserve: !_reservePending);
 
         // 上限はモニタ依存なので、ドッキング先が確定してから保存値も丸める。
         if (_dock?.CurrentMonitor is { } monitor)
@@ -752,6 +755,11 @@ public sealed partial class KeyboardWindow : Window
             return;
         }
 
+        // 作業領域は、キーボードが見えてから確保する。先に確保すると、他アプリが
+        // 縮んで空いた帯にまだキーボードが出ておらず、デスクトップの背景が見える。
+        // 見えてから確保すれば、縮んだ分はすでにキーボードが覆っている。
+        if (!_isShown) _reservePending = true;
+
         // 表示する前に付け直す。Show の時点で外れているとフォーカスを奪う。
         EnsureNoActivate();
 
@@ -761,10 +769,24 @@ public sealed partial class KeyboardWindow : Window
 
         if (!_isShown)
         {
+            TraceLog.Write($"キーボードを表示  手動={remember} 省電力={PowerMode.IsLowPower}");
+            _showRequestedAt = Environment.TickCount64;
+
             // 開き直しは初期の見た目から始める。
             ResetToInitialView();
 
-            AppWindow.Show(activateWindow: false);
+            // 描き終えるまでは見せない。初回の Show では、中身が描かれる前に
+            // 白地のウィンドウが出てしまう。
+            WindowStyles.SetCloaked(_hwnd, true);
+
+            // Show するのは初回だけ。以後は隠すときもウィンドウを残し、
+            // クロークで出し入れする（HideKeyboard 参照）。
+            if (!_windowShown)
+            {
+                AppWindow.Show(activateWindow: false);
+                _windowShown = true;
+            }
+
             _isShown = true;
 
             // Show で Z 順とスタイルが戻ることがあるため、両方取り直す。
@@ -773,7 +795,19 @@ public sealed partial class KeyboardWindow : Window
 
             if (!ok) Log("WS_EX_NOACTIVATE を維持できていません", isError: true);
 
-            StartStateWatch();
+            var stateChanged = StartStateWatch();
+
+            // 隠したときと同じ大きさで、描き直すものも無ければ、描画済みの中身が
+            // そのまま使える。待たずに出す。初回や大きさが変わったときは、
+            // 古い中身が一瞬出ないよう描き終えるのを待つ。
+            if (!stateChanged && _hiddenLook is { } look && look == CurrentLook())
+            {
+                Reveal("即時");
+            }
+            else
+            {
+                RevealAfterRender();
+            }
         }
 
         if (!remember) return;
@@ -805,6 +839,133 @@ public sealed partial class KeyboardWindow : Window
         _dispatcher.Modifiers.Clear();
 
         RefreshAllKeys();
+    }
+
+    /// <summary>ウィンドウを一度でも Show したか。以後は Hide せず、クロークで出し入れする。</summary>
+    private bool _windowShown;
+
+    /// <summary>
+    /// クロークを外すまでに待つフレーム数。
+    ///
+    /// Rendering は描く直前に来るため、1 回目では出し直した分がまだ画面に届いていない。
+    /// 2 回目まで待てば、少なくとも 1 フレームは描き終えている。
+    /// </summary>
+    private const int RevealFrames = 2;
+
+    /// <summary>
+    /// フレームが来なかったときに、それでも外すまでの時間。
+    /// クロークを外し損ねると、表示中のはずのキーボードが見えないまま残る。
+    /// </summary>
+    private const int RevealFallbackMs = 150;
+
+    /// <summary>
+    /// 中身の描かれ方を決める条件。大きさ・浮かせているか・載っているモニタ。
+    /// モニタが変われば拡大率が変わることがあり、同じ大きさでも描き直しになる。
+    /// </summary>
+    private readonly record struct Look(int Width, int Height, bool Floating, string? Monitor);
+
+    /// <summary>隠したときの条件。まだ一度も隠していなければ null。</summary>
+    private Look? _hiddenLook;
+
+    private Look CurrentLook()
+    {
+        var size = AppWindow.Size;
+        return new Look(size.Width, size.Height, IsFloating, MonitorInfo.Resolve(null, _hwnd)?.DeviceName);
+    }
+
+    /// <summary>残りの待ちフレーム数。</summary>
+    private int _revealFramesLeft;
+
+    /// <summary>フレームの通知を受け取っているか。</summary>
+    private bool _revealSubscribed;
+
+    private DispatcherQueueTimer? _revealFallback;
+
+    /// <summary>
+    /// 描き終えてからクロークを外す。
+    ///
+    /// 置き直しで大きさが変わると、隠す前の大きさで描いた中身が一瞬出る。
+    /// 次の描画を待ってから見せれば、今の大きさで描いたものだけが出る。
+    /// </summary>
+    private void RevealAfterRender()
+    {
+        if (!_revealSubscribed)
+        {
+            CompositionTarget.Rendering += OnRevealRendering;
+            _revealSubscribed = true;
+        }
+
+        _revealFramesLeft = RevealFrames;
+
+        if (_revealFallback is null)
+        {
+            _revealFallback = DispatcherQueue.CreateTimer();
+            _revealFallback.Interval = TimeSpan.FromMilliseconds(RevealFallbackMs);
+            _revealFallback.IsRepeating = false;
+            _revealFallback.Tick += (_, _) => Reveal("予備のタイマー");
+        }
+
+        _revealFallback.Start();
+    }
+
+    private void OnRevealRendering(object? sender, object e)
+    {
+        if (--_revealFramesLeft > 0) return;
+        Reveal("描画");
+    }
+
+    /// <summary>表示を求められた時刻。クロークを外すまでの時間を記録に残すために持つ。</summary>
+    private long _showRequestedAt;
+
+    /// <param name="via">何を合図に外したか。記録に残す。</param>
+    private void Reveal(string via)
+    {
+        TraceLog.Write(
+            $"  クロークを解除  合図={via} 経過={Environment.TickCount64 - _showRequestedAt}ms "
+            + $"表示中={_isShown} 省電力={PowerMode.IsLowPower}");
+
+        CancelReveal();
+
+        // 待っている間に隠された。出さない。
+        if (!_isShown) return;
+
+        if (!WindowStyles.SetCloaked(_hwnd, false))
+        {
+            // 外せないと見えないまま残る。従来どおり出し直して救う。
+            AppWindow.Show(activateWindow: false);
+            EnsureNoActivate();
+            Log("クロークを解除できません", isError: true);
+        }
+
+        ReservePending();
+    }
+
+    /// <summary>
+    /// 表示の途中で、作業領域の確保を後回しにしているか。
+    /// 置き場所は決まっているが、他アプリの作業領域はまだ変えていない。
+    /// </summary>
+    private bool _reservePending;
+
+    /// <summary>後回しにしていた作業領域の確保を行う。見えてから呼ぶ。</summary>
+    private void ReservePending()
+    {
+        if (!_reservePending) return;
+        _reservePending = false;
+
+        // 浮かせている間は確保しない。
+        if (_isShown && !IsFloating) Dock();
+    }
+
+    private void CancelReveal()
+    {
+        if (_revealSubscribed)
+        {
+            CompositionTarget.Rendering -= OnRevealRendering;
+            _revealSubscribed = false;
+        }
+
+        _revealFramesLeft = 0;
+        _revealFallback?.Stop();
     }
 
     /// <summary>
@@ -843,6 +1004,8 @@ public sealed partial class KeyboardWindow : Window
             return;
         }
 
+        TraceLog.Write($"キーボードを非表示  手動={remember}");
+
         _shownManually = false;
 
         StopStateWatch();
@@ -851,8 +1014,19 @@ public sealed partial class KeyboardWindow : Window
         // 出し直すときは ApplyPlacement が置き直す。ここでは触らない。
         SetStatusVisible(false);
 
-        AppWindow.Hide();
+        // AppWindow.Hide は使わない。隠すとアプリが描画を止め、出し直すたびに
+        // 白地から描き直すことになり、キーが出るまでに間が空く。
+        // クロークならウィンドウは残って描画済みの中身が保たれ、当たり判定からも外れる。
+        CancelReveal();
+        _reservePending = false;
+        WindowStyles.SetCloaked(_hwnd, true);
         _isShown = false;
+
+        // 見えていない間に初期の見た目へ戻しておく。出し直したときに、
+        // 隠した時点の見た目が一瞬残らないようにする。
+        ResetToInitialView();
+
+        _hiddenLook = CurrentLook();
 
         // AppBar を外すと、確保していた分だけ他アプリの作業領域が広がり、
         // 相手が再レイアウトすることがある。そのとき入力欄がフォーカスを
@@ -917,6 +1091,9 @@ public sealed partial class KeyboardWindow : Window
             ApplyPlacement();
             return;
         }
+
+        // 表示の途中。見えた時点で確保し直すので、ここで先に確保しない。
+        if (_reservePending) return;
 
         _dock?.Refresh(_settings.HeightDip, _settings.MonitorDeviceName, _settings.CoverTaskbar);
     }
@@ -1403,12 +1580,15 @@ public sealed partial class KeyboardWindow : Window
     /// IME の入切・Caps Lock の状態を定期的に確かめる。
     /// 見るのは表示中だけ。隠れている間に問い合わせても使い道が無い。
     /// </summary>
-    private void StartStateWatch()
+    /// <returns>状態が変わってキーを描き直したら true。</returns>
+    private bool StartStateWatch()
     {
         _stateTimer ??= CreateStateTimer();
 
-        PollExternalState();
+        var changed = PollExternalState();
         _stateTimer.Start();
+
+        return changed;
     }
 
     private void StopStateWatch() => _stateTimer?.Stop();
@@ -1423,7 +1603,8 @@ public sealed partial class KeyboardWindow : Window
         return timer;
     }
 
-    private void PollExternalState()
+    /// <returns>状態が変わってキーを描き直したら true。</returns>
+    private bool PollExternalState()
     {
         var changed = false;
 
@@ -1460,6 +1641,8 @@ public sealed partial class KeyboardWindow : Window
         }
 
         if (changed) RefreshAllKeys();
+
+        return changed;
     }
 
     /// <summary>
@@ -1596,6 +1779,9 @@ public sealed partial class KeyboardWindow : Window
     }
 
     /// <summary>低電力モードが入切した。背景の素材を選び直す。</summary>
-    private void OnEnergySaverStatusChanged(object? sender, object e) =>
+    private void OnEnergySaverStatusChanged(object? sender, object e)
+    {
+        TraceLog.Write($"省電力モードの切り替え  省電力={PowerMode.IsLowPower}");
         DispatcherQueue.TryEnqueue(ApplyBackdrop);
+    }
 }
