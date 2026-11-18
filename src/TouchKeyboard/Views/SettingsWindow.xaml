@@ -21,14 +21,20 @@
         </Grid.RowDefinitions>
 
         <!--
-            背の高いタイトルバー（48）。中身をここまで広げ、この帯を掴む場所として渡す。
+            背の高いタイトルバー（48）。WinUI Gallery と同じ組み方にする。
+            この帯を掴む場所として渡す（SettingsWindow.xaml.cs の SetTitleBar）。
 
-            高さは明示する。WinUI Gallery の TitleBarWindow サンプルは明示していないが、
-            SettingsWindow.xaml.cs 側で PreferredHeightOption を SetTitleBar より先に
-            設定する順序に直したうえで Height なしを試しても、実機では低いままだった。
-            PreferredHeightOption は AppWindow 側（最小化・最大化・閉じるボタンの高さなど、
-            OS が描く非クライアント領域）を決めるだけで、こちら側の XAML の行の高さには
-            効かないと判断し、48 を明示する方針に確定する。
+            高さは指定しない。TitleBar は中身（Content）を持たないと 32 の低い並びになり、
+            持つと 48 の並びになる。以前は Height="48" で引き伸ばしていたが、それでは
+            低い並びのまま帯だけが伸び、折りたたみボタンが小さく浮いて見えた。
+            空の中身を持たせれば TitleBar 自身の 48 の並びになり、折りたたみボタンの
+            大きさと位置も WinUI Gallery と揃う。空の中身の部分も掴んで動かせる。
+            （ModernFlyouts の設定画面で確かめた組み方に合わせた。）
+
+            最小化・閉じるボタンの高さは別物で、SettingsWindow.xaml.cs の
+            PreferredHeightOption（Tall）が決める。
+
+            タイトルはアプリ名、副題は「設定」。どのアプリの設定かが一目で分かる。
 
             折りたたみボタンは WinUI 純正の TitleBar が持つもの（IsPaneToggleButtonVisible /
             PaneToggleRequested）を使う。タイトルバー領域に自前の Button を置いて
@@ -38,23 +44,32 @@
         -->
         <TitleBar x:Name="AppTitleBar"
                   Grid.Row="0"
-                  Height="48"
-                  Title="TouchKeyboard の設定"
+                  Title="TouchKeyboard"
+                  Subtitle="設定"
+                  IsBackButtonVisible="False"
                   IsPaneToggleButtonVisible="True"
                   PaneToggleRequested="AppTitleBar_PaneToggleRequested">
+            <TitleBar.Content>
+                <Grid />
+            </TitleBar.Content>
             <TitleBar.IconSource>
-                <FontIconSource Glyph="&#xE765;" />
+                <!-- タスクトレイ・Alt+Tab と同じアプリのアイコン。ms-appx:/// は exe のある場所が起点。 -->
+                <ImageIconSource ImageSource="ms-appx:///Assets/AppIcon.ico" />
             </TitleBar.IconSource>
         </TitleBar>
 
+        <!--
+            IsTitleBarAutoPaddingEnabled は切る。タイトルバーは上の行の TitleBar が受け持つので、
+            NavigationView がタイトルバーの分として上に足す余白は要らない。
+        -->
         <NavigationView x:Name="Nav"
                         Grid.Row="1"
                         Background="Transparent"
                         PaneDisplayMode="Left"
-                        OpenPaneLength="320"
                         IsSettingsVisible="False"
                         IsBackButtonVisible="Collapsed"
-                        IsPaneToggleButtonVisible="False">
+                        IsPaneToggleButtonVisible="False"
+                        IsTitleBarAutoPaddingEnabled="False">
 
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="表示" Tag="display" IsSelected="True">
