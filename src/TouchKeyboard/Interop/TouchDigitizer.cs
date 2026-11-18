@@ -24,6 +24,9 @@ public static class TouchDigitizer
         public nint Preparsed;
         public int MinX, MaxX, MinY, MaxY;
         public bool Usable;
+
+        /// <summary>ペン（Digitizer の Pen コレクション）か。false なら指のタッチスクリーン。</summary>
+        public bool IsPen;
     }
 
     private static readonly Dictionary<nint, Device> Devices = new();
@@ -36,7 +39,8 @@ public static class TouchDigitizer
     /// 接触の有無を見ずに「位置が読めなければとりあえず触れたことにする」という
     /// 扱いをすると、かざしただけで反応する。
     /// </summary>
-    public readonly record struct TouchReport(bool IsTouching, (int X, int Y)? Point);
+    /// <param name="IsPen">ペンの報告か。指とペンで扱いを分ける（ペンで書く操作は入力欄のタップではない）。</param>
+    public readonly record struct TouchReport(bool IsTouching, (int X, int Y)? Point, bool IsPen = false);
 
     /// <summary>
     /// 報告を読む。読めない報告（このアプリが登録した種類でない、記述子が
@@ -84,11 +88,11 @@ public static class TouchDigitizer
 
                 // 接触は確認できた。位置まで読めるかは記述子の作り次第で別問題。
                 var point = device.Usable ? PointIn(device, report, reportSize) : null;
-                return new TouchReport(true, point);
+                return new TouchReport(true, point, device.IsPen);
             }
 
             // どの報告も接触していなかった。ホバーや、離した瞬間の報告がここに来る。
-            return new TouchReport(false, null);
+            return new TouchReport(false, null, device.IsPen);
         }
         finally
         {
@@ -267,6 +271,10 @@ public static class TouchDigitizer
         {
             return device;
         }
+
+        // トップレベルコレクションの種類で、ペンかタッチスクリーンかが決まる。
+        device.IsPen = caps.UsagePage == NativeMethods.HID_USAGE_PAGE_DIGITIZER
+                       && caps.Usage == NativeMethods.HID_USAGE_DIGITIZER_PEN;
 
         var count = caps.NumberInputValueCaps;
         if (count == 0) return device;
