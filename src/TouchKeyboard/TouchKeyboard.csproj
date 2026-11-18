@@ -6,6 +6,15 @@
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>TouchKeyboard</RootNamespace>
     <AssemblyName>TouchKeyboard</AssemblyName>
+
+    <!--
+      バージョン。上げるのはここだけ。
+      実行ファイルのバージョン（1.0.2.0）になり、設定画面の「バージョン情報」に出る。
+      MSI（installer/TouchKeyboard.wxs）も実行ファイルからこの値を読む。
+    -->
+    <Version>1.0.2</Version>
+    <Company>Luna Project</Company>
+    <Product>TouchKeyboard</Product>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>

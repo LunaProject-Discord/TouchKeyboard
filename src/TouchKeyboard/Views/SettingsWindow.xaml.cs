@@ -68,6 +68,8 @@ public sealed partial class SettingsWindow : Window
         Wire();
         ShowSection("display", "表示");
 
+        AppCard.Description = $"バージョン : {AppVersion()}";
+
         _loading = false;
     }
 
@@ -141,6 +143,7 @@ public sealed partial class SettingsWindow : Window
         AutoShowSection.Visibility = Visible(tag == "autoShow");
         KeysSection.Visibility = Visible(tag == "keys");
         OtherSection.Visibility = Visible(tag == "other");
+        AboutSection.Visibility = Visible(tag == "about");
 
         static Visibility Visible(bool shown) =>
             shown ? Visibility.Visible : Visibility.Collapsed;
@@ -419,6 +422,10 @@ public sealed partial class SettingsWindow : Window
         OpenFolderButton.Click += (_, _) => Open(AppSettings.DirectoryPath);
         OpenSettingsButton.Click += (_, _) => Open(AppSettings.DirectoryPath);
 
+        RepositoryCard.Click += (_, _) => Open(RepositoryUrl);
+        GenInterfaceCard.Click += (_, _) => Open(BundledFile("Assets", "Fonts", "OFL.txt"));
+        FluentIconsCard.Click += (_, _) => Open(BundledFile("Assets", "Fonts", "FluentSystemIcons-LICENSE.txt"));
+
         // 開いている間に一覧が増えることがある。閉じる直前ではなく、
         // 表示に戻ってきたときに読み直す。
         Activated += (_, args) =>
@@ -440,6 +447,19 @@ public sealed partial class SettingsWindow : Window
         double.IsNaN(value) ? null : (int)Math.Round(value);
 
     private void Notify(string message) => StatusText.Text = message;
+
+    private const string RepositoryUrl = "https://github.com/LunaProject-Discord/TouchKeyboard";
+
+    /// <summary>実行ファイルと同じ場所に同梱したファイルの絶対パス。</summary>
+    private static string BundledFile(params string[] parts) =>
+        Path.Combine([AppContext.BaseDirectory, .. parts]);
+
+    /// <summary>
+    /// 表示するバージョン。TouchKeyboard.csproj の Version から決まる実行ファイルのバージョン。
+    /// MSI のバージョンも同じ値から取るので、「アプリと機能」の表示と一致する。
+    /// </summary>
+    private static string AppVersion() =>
+        System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "不明";
 
     private static void Open(string path)
     {

@@ -97,6 +97,15 @@
                 </NavigationViewItem>
             </NavigationView.MenuItems>
 
+            <!-- Windows の設定や ModernFlyouts と同じく、バージョン情報は下に分けて置く。 -->
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="バージョン情報" Tag="about">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE946;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
+
             <!--
                 横方向の送りは切る。切らないと、中身を測るときの幅が無限として渡り、
                 列は伸びずに札ごとの必要な幅で決まる。札の幅が中身によってばらつく。
@@ -221,6 +230,73 @@
                         <tk:SettingsCard Header="設定ファイル"
                                          Description="%APPDATA%\TouchKeyboard\settings.json">
                             <Button x:Name="OpenSettingsButton" Content="フォルダーを開く" />
+                        </tk:SettingsCard>
+                    </StackPanel>
+
+                    <!-- バージョン情報 -->
+                    <StackPanel x:Name="AboutSection" Spacing="4" Visibility="Collapsed">
+                        <!-- 説明文は SettingsWindow.xaml.cs でバージョンを入れる。 -->
+                        <tk:SettingsExpander x:Name="AppCard" Header="TouchKeyboard" IsExpanded="True">
+                            <tk:SettingsExpander.HeaderIcon>
+                                <ImageIcon Source="ms-appx:///Assets/AppIcon.ico" />
+                            </tk:SettingsExpander.HeaderIcon>
+                            <tk:SettingsExpander.Items>
+                                <!--
+                                    文字だけの項目は見出し（Header）として書く。Windows Community Toolkit
+                                    Gallery のサンプル（"This is a card with a Header only"）と同じ書き方。
+
+                                    ContentAlignment="Left" の中身に TextBlock を入れていたときは、項目の
+                                    最小の高さの中で文字が下に寄って見えた。サンプルでも Left に入れるのは
+                                    CheckBox のようなコントロールだけで、文字は見出しにしている。
+                                    見出しなら、ほかの項目と同じく最小の高さの中で縦の中央に置かれる。
+                                -->
+                                <tk:SettingsCard Header="ATOK の入力ミス補正に対応したタッチキーボード。ハードウェアキーボード相当のフルレイアウトをタッチで使えます。" />
+                            </tk:SettingsExpander.Items>
+                        </tk:SettingsExpander>
+
+                        <tk:SettingsCard x:Name="RepositoryCard"
+                                         Header="ソースコード"
+                                         Description="LunaProject-Discord/TouchKeyboard（GNU LGPL 2.1）"
+                                         IsClickEnabled="True">
+                            <tk:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE943;" />
+                            </tk:SettingsCard.HeaderIcon>
+                            <tk:SettingsCard.ActionIcon>
+                                <FontIcon Glyph="&#xE8A7;" />
+                            </tk:SettingsCard.ActionIcon>
+                        </tk:SettingsCard>
+
+                        <!--
+                            同梱しているフォント。どちらもライセンス文を同梱する条件で配布されている
+                            （TouchKeyboard.csproj 参照）。押すと同梱のライセンス文を開く。
+                        -->
+                        <!-- 見出しの余白は Windows の設定・WinUI Gallery（ModernFlyouts も同じ）に合わせる。 -->
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   Text="使用しているフォント"
+                                   Margin="1,30,0,6" />
+
+                        <tk:SettingsCard x:Name="GenInterfaceCard"
+                                         Header="Gen Interface JP"
+                                         Description="キーの刻印。SIL Open Font License 1.1"
+                                         IsClickEnabled="True">
+                            <tk:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8D2;" />
+                            </tk:SettingsCard.HeaderIcon>
+                            <tk:SettingsCard.ActionIcon>
+                                <FontIcon Glyph="&#xE8A7;" />
+                            </tk:SettingsCard.ActionIcon>
+                        </tk:SettingsCard>
+
+                        <tk:SettingsCard x:Name="FluentIconsCard"
+                                         Header="Fluent System Icons"
+                                         Description="Caps Lock の南京錠。MIT License"
+                                         IsClickEnabled="True">
+                            <tk:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8D2;" />
+                            </tk:SettingsCard.HeaderIcon>
+                            <tk:SettingsCard.ActionIcon>
+                                <FontIcon Glyph="&#xE8A7;" />
+                            </tk:SettingsCard.ActionIcon>
                         </tk:SettingsCard>
                     </StackPanel>
 
