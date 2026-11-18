@@ -29,7 +29,6 @@ namespace TouchKeyboard.Views;
 public sealed partial class KeyboardWindow : Window
 {
     private readonly KeyDispatcher _dispatcher = new();
-    private readonly List<KeyButton> _buttons = [];
     private readonly AppSettings _settings;
 
     /// <summary>押下中のキー。二重送出の防止と、終了時の取りこぼし防止を兼ねる。</summary>
@@ -166,17 +165,100 @@ public sealed partial class KeyboardWindow : Window
     /// <summary>いま実際に出している配列のファイル名。</summary>
     private string? _activeLayoutFile;
 
+    /// <summary>
+    /// 組み立て済みの配列。1 つの配列ぶんのキーと、組み直さずに幅だけを変える行の控え。
+    /// </summary>
+    private sealed class BuiltLayout(LayoutDefinition definition)
+    {
+        public LayoutDefinition Definition { get; } = definition;
+
+        /// <summary>行を並べたグリッド。<c>KeyRoot</c> やテンキーのパネルへ差し込む。</summary>
+        public Grid Root { get; } = new();
+
+        /// <summary>空白を除いたキー。</summary>
+        public List<KeyButton> Buttons { get; } = [];
+
+        /// <summary>
+        /// Fn 段で幅の変わる行。列と、そこに置いたキーを控える。
+        ///
+        /// 組み直さずに幅だけを差し替えるために持つ。組み直すと、Fn を押さえたままの
+        /// キー自身が作り直され、指を離した通知が届かずに押しっぱなしのまま残る。
+        /// </summary>
+        public List<List<(ColumnDefinition Column, KeyButton Button)>> FnRows { get; } = [];
+
+        /// <summary>
+        /// パスワード欄で幅の変わる行。<see cref="FnRows"/> と同じ理由で、
+        /// 組み直さず列だけを差し替えるために持つ。
+        /// </summary>
+        public List<List<(ColumnDefinition Column, KeyButton Button)>> PasswordRows { get; } = [];
+    }
+
+    /// <summary>
+    /// 一度組み立てた配列。ファイル名ごとに控え、次からは差し替えるだけにする。
+    ///
+    /// 出し直すと盤の大きさが変わり、細いときの代わりの配列との間で入れ替わることがある。
+    /// そのたびに定義を読み直してキーを作り直すと、出した直後に描き直しが走る。
+    ///
+    /// 定義ファイルが書き換えられていれば、次に切り替えたときに読み直して組み立て直す。
+    /// 実機でスキャンコードを調整するときに、再起動せずに差し替えられるようにするため。
+    /// </summary>
+    private readonly Dictionary<string, BuiltLayout> _builtLayouts = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 読み込んだ定義と、読んだ時点のファイルの更新日時。
+    /// 組み立てていない配列（細いときに選ばれている側）も含む。
+    /// </summary>
+    private readonly Dictionary<string, (LayoutDefinition Definition, DateTime WrittenAt)> _definitions =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>いま <c>KeyRoot</c> に差し込んでいる配列。</summary>
+    private BuiltLayout? _active;
+
+    private LayoutDefinition DefinitionOf(string file)
+    {
+        var path = LayoutLoader.PathOf(file);
+
+        // ファイルが無ければ 1601 年を返す。控えと食い違うので読み直しに回り、
+        // Load が見つからない旨の例外を投げる。
+        var writtenAt = File.GetLastWriteTimeUtc(path);
+
+        if (_definitions.TryGetValue(file, out var cached) && cached.WrittenAt == writtenAt)
+        {
+            return cached.Definition;
+        }
+
+        // 読めなかったものは控えない。直したファイルを次の切り替えで読み直せる。
+        var definition = LayoutLoader.Load(path);
+        _definitions[file] = (definition, writtenAt);
+        return definition;
+    }
+
+    private BuiltLayout BuiltOf(string file)
+    {
+        var definition = DefinitionOf(file);
+
+        // 定義を読み直していれば、控えは古い定義から組んだもの。作り直す。
+        if (_builtLayouts.TryGetValue(file, out var cached)
+            && ReferenceEquals(cached.Definition, definition))
+        {
+            return cached;
+        }
+
+        var built = Build(definition);
+        _builtLayouts[file] = built;
+        return built;
+    }
+
     private void LoadLayout()
     {
+        BuiltLayout built;
+
         try
         {
-            _selected = LayoutLoader.Load(LayoutLoader.PathOf(_settings.LayoutFile));
+            _selected = DefinitionOf(_settings.LayoutFile);
 
             var file = EffectiveLayoutFile(_selected);
-
-            _layout = string.Equals(file, _settings.LayoutFile, StringComparison.OrdinalIgnoreCase)
-                ? _selected
-                : LayoutLoader.Load(LayoutLoader.PathOf(file));
+            built = BuiltOf(file);
 
             _activeLayoutFile = file;
         }
@@ -190,7 +272,8 @@ public sealed partial class KeyboardWindow : Window
 
             try
             {
-                _layout = _selected = LayoutLoader.LoadDefault();
+                built = BuiltOf(LayoutLoader.DefaultFileName);
+                _selected = built.Definition;
                 _settings.LayoutFile = _activeLayoutFile = LayoutLoader.DefaultFileName;
             }
             catch (Exception fallback)
@@ -200,8 +283,16 @@ public sealed partial class KeyboardWindow : Window
             }
         }
 
+        _active = built;
+        _layout = built.Definition;
+
         Title = $"TouchKeyboard — {_layout.Name}";
-        Populate(KeyRoot, _layout);
+
+        if (!KeyRoot.Children.Contains(built.Root))
+        {
+            KeyRoot.Children.Clear();
+            KeyRoot.Children.Add(built.Root);
+        }
 
         // かなを刻む配列かどうかで、IME を見るかが変わる。
         if (_isShown) StartStateWatch();
@@ -284,19 +375,12 @@ public sealed partial class KeyboardWindow : Window
     }
 
     /// <summary>
-    /// 定義を任意のグリッドへ流し込む。本体とテンキーのパネルで共用する。
+    /// 定義からキーを組み立てる。本体とテンキーのパネルで共用する。
     /// </summary>
-    private void Populate(Grid target, LayoutDefinition layout)
+    private BuiltLayout Build(LayoutDefinition layout)
     {
-        target.Children.Clear();
-        target.RowDefinitions.Clear();
-
-        // 控えは本体の盤のぶんだけ。テンキーを組むときに捨ててしまわないようにする。
-        if (ReferenceEquals(target, KeyRoot))
-        {
-            _fnRows.Clear();
-            _passwordRows.Clear();
-        }
+        var built = new BuiltLayout(layout);
+        var target = built.Root;
 
         // 行の高さは定義の倍率で配分する。ファンクション段だけ低くする、といった指定ができる。
         // overlayPrevious の行は新しい行を消費せず、直前と同じ位置に重ねる。
@@ -321,7 +405,7 @@ public sealed partial class KeyboardWindow : Window
             // 重ねた行は同じ位置のキーとして扱う。結合の判定も同じ並びで行う。
             while (spans.Count <= placements[i]) spans.Add([]);
 
-            var row = BuildRow(definition, layout, spans[placements[i]]);
+            var row = BuildRow(definition, built, spans[placements[i]]);
             Grid.SetRow(row, placements[i]);
 
             // またがる行は下の行にも重なる。重なる位置は相手側がスペーサーで空けてある。
@@ -338,6 +422,8 @@ public sealed partial class KeyboardWindow : Window
 
         // 中央に置く配列では端の列を結び付けない。基準も押し出しも要らない。
         if (!layout.CenterLabels) LinkEdgeKeys(spans);
+
+        return built;
     }
 
     /// <summary>
@@ -411,22 +497,9 @@ public sealed partial class KeyboardWindow : Window
     private static double ExposedRight(KeySpan self, KeySpan other) =>
         Math.Max(0, self.End - other.End) / self.Width;
 
-    /// <summary>
-    /// Fn 段で幅の変わる行。列と、そこに置いたキーを控える。
-    ///
-    /// 組み直さずに幅だけを差し替えるために持つ。組み直すと、Fn を押さえたままの
-    /// キー自身が作り直され、指を離した通知が届かずに押しっぱなしのまま残る。
-    /// </summary>
-    private readonly List<List<(ColumnDefinition Column, KeyButton Button)>> _fnRows = [];
-
-    /// <summary>
-    /// パスワード欄で幅の変わる行。<see cref="_fnRows"/> と同じ理由で、
-    /// 組み直さず列だけを差し替えるために持つ。
-    /// </summary>
-    private readonly List<List<(ColumnDefinition Column, KeyButton Button)>> _passwordRows = [];
-
-    private Grid BuildRow(KeyRow row, LayoutDefinition layout, List<KeySpan> spans)
+    private Grid BuildRow(KeyRow row, BuiltLayout built, List<KeySpan> spans)
     {
+        var layout = built.Definition;
         var grid = new Grid();
         var rowUnits = layout.RowUnits;
         var cells = new List<(ColumnDefinition Column, KeyButton Button)>();
@@ -444,6 +517,7 @@ public sealed partial class KeyboardWindow : Window
             grid.ColumnDefinitions.Add(column);
 
             var button = BuildKey(def, row.Height, layout.StackedLabels);
+            if (!def.Spacer) built.Buttons.Add(button);
             cells.Add((column, button));
 
             // 併記するキーの寄せ方に使う。中心が行の右半分にあるかで決める。
@@ -467,10 +541,10 @@ public sealed partial class KeyboardWindow : Window
         }
 
         // Fn 段で構成の変わる行だけ控える。他の行は幅を触らない。
-        if (cells.Any(cell => cell.Button.Definition.FnHidden)) _fnRows.Add(cells);
+        if (cells.Any(cell => cell.Button.Definition.FnHidden)) built.FnRows.Add(cells);
 
         // パスワード欄で構成の変わる行だけ控える。
-        if (cells.Any(cell => cell.Button.Definition.PasswordHidden)) _passwordRows.Add(cells);
+        if (cells.Any(cell => cell.Button.Definition.PasswordHidden)) built.PasswordRows.Add(cells);
 
         // 行の幅が rowUnits に満たない分は右端の隙間にする。
         // これで行ごとのキー数が違っても縦の位置が揃う。
@@ -486,6 +560,17 @@ public sealed partial class KeyboardWindow : Window
         return grid;
     }
 
+    /// <summary>いま使っている配列とテンキーのキー。状態の描き直しはこれだけに掛ける。</summary>
+    private IEnumerable<KeyButton> LiveButtons =>
+        new[] { _active, _numpad }.OfType<BuiltLayout>().SelectMany(built => built.Buttons);
+
+    /// <summary>
+    /// 組み立てたすべてのキー。控えているだけの配列も含む。
+    /// テーマとリピートの設定はこちらへ掛ける。差し替えたときに古いまま出さないため。
+    /// </summary>
+    private IEnumerable<KeyButton> AllButtons =>
+        _builtLayouts.Values.Append(_numpad).OfType<BuiltLayout>().SelectMany(built => built.Buttons);
+
     private KeyButton BuildKey(KeyDefinition def, double rowHeight, bool stacked = false)
     {
         var button = new KeyButton(def, _theme, rowHeight, stacked);
@@ -500,8 +585,6 @@ public sealed partial class KeyboardWindow : Window
             // その後 Delay を置いて Interval ごとに Click を上げる。
             button.Click += Key_Click;
             button.Released += Key_Released;
-
-            _buttons.Add(button);
         }
 
         return button;
@@ -567,7 +650,7 @@ public sealed partial class KeyboardWindow : Window
             Shell.Background = _theme.PanelBackground;
         }
 
-        foreach (var button in _buttons)
+        foreach (var button in AllButtons)
         {
             button.ApplyTheme(_theme);
         }
@@ -1044,15 +1127,16 @@ public sealed partial class KeyboardWindow : Window
     // テンキーのパネル
     // ------------------------------------------------------------------
 
-    /// <summary>テンキーの定義。初回に読み、以降は表示を切り替えるだけ。</summary>
-    private LayoutDefinition? _numpadLayout;
+    /// <summary>テンキー。初回に組み立て、以降は表示を切り替えるだけ。</summary>
+    private BuiltLayout? _numpad;
 
     private bool LoadNumpad()
     {
         try
         {
-            _numpadLayout = LayoutLoader.Load(LayoutLoader.PathOf("numpad.json"));
-            Populate(NumpadRoot, _numpadLayout);
+            _numpad = Build(LayoutLoader.Load(LayoutLoader.PathOf("numpad.json")));
+            NumpadRoot.Children.Clear();
+            NumpadRoot.Children.Add(_numpad.Root);
             return true;
         }
         catch (Exception ex)
@@ -1386,7 +1470,7 @@ public sealed partial class KeyboardWindow : Window
     {
         // 押下中のキーも除外しない。押下表示は KeyButton が IsPressed から決めるため、
         // ここで描き直しても押下中の見た目は保たれる。
-        foreach (var button in _buttons)
+        foreach (var button in LiveButtons)
         {
             button.Refresh(
                 LatchOf(button),
@@ -1397,16 +1481,19 @@ public sealed partial class KeyboardWindow : Window
                 _imeOpen);
         }
 
-        ApplyFoldingLayout(
-            _fnRows, _dispatcher.Modifiers.IsFnActive,
-            isHidden: def => def.FnHidden,
-            // 受け取るのは Fn 段を持つ文字キー。Esc や BS のような役割のキーは広げない。
-            isTaker: def => def is { HasFnLayer: true, IsCharacter: true });
+        foreach (var built in new[] { _active, _numpad }.OfType<BuiltLayout>())
+        {
+            ApplyFoldingLayout(
+                built.FnRows, _dispatcher.Modifiers.IsFnActive,
+                isHidden: def => def.FnHidden,
+                // 受け取るのは Fn 段を持つ文字キー。Esc や BS のような役割のキーは広げない。
+                isTaker: def => def is { HasFnLayer: true, IsCharacter: true });
 
-        ApplyFoldingLayout(
-            _passwordRows, _isPasswordField,
-            isHidden: def => def.PasswordHidden,
-            isTaker: def => def.PasswordWidthTaker);
+            ApplyFoldingLayout(
+                built.PasswordRows, _isPasswordField,
+                isHidden: def => def.PasswordHidden,
+                isTaker: def => def.PasswordWidthTaker);
+        }
     }
 
     /// <summary>
@@ -1461,7 +1548,7 @@ public sealed partial class KeyboardWindow : Window
     {
         var (delay, interval) = KeyRepeat.Resolve(_settings.RepeatDelayMs, _settings.RepeatIntervalMs);
 
-        foreach (var button in _buttons)
+        foreach (var button in AllButtons)
         {
             button.SetRepeatTiming(delay, interval);
         }
