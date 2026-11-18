@@ -13,6 +13,10 @@
     証明書は自己署名で作り、この PC の「信頼されたルート証明機関」と
     「信頼された発行元」に登録する。すでにあれば作り直さない。
 
+.PARAMETER Arch
+    配置するビルド出力のアーキテクチャ（arm64 / x64）。
+    省略時はこの PC の OS のアーキテクチャに合わせる。
+
 .NOTES
     管理者権限が必要（証明書の登録と Program Files への書き込み）。
     最終版では、この処理をインストーラーに移す。
@@ -20,16 +24,23 @@
 
 param(
     [string] $Configuration = "Debug",
+    [ValidateSet("arm64", "x64")]
+    [string] $Arch,
     [switch] $NoLaunch
 )
 
 $ErrorActionPreference = "Stop"
 
+# エミュレーション下の PowerShell でも、プロセスではなく OS のアーキテクチャを見る。
+if (-not $Arch) {
+    $Arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq "Arm64") { "arm64" } else { "x64" }
+}
+
 $subject     = "CN=Luna Project"
 $friendly    = "Luna Project Code Signing"
 $installDir  = "C:\Program Files\TouchKeyboard"
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$buildDir    = Join-Path $projectRoot "src\TouchKeyboard\bin\$Configuration\net10.0-windows10.0.19041.0\win-arm64"
+$buildDir    = Join-Path $projectRoot "src\TouchKeyboard\bin\$Configuration\net10.0-windows10.0.19041.0\win-$Arch"
 
 function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -84,7 +95,8 @@ Assert-Administrator
 
 if (-not (Test-Path $buildDir)) {
     Write-Host "ビルド結果がありません: $buildDir" -ForegroundColor Red
-    Write-Host "先に dotnet build を実行してください。" -ForegroundColor Yellow
+    Write-Host "先にビルドしてください:" -ForegroundColor Yellow
+    Write-Host "  dotnet build src\TouchKeyboard\TouchKeyboard.csproj -c $Configuration -p:Platforms=$Arch -p:RuntimeIdentifier=win-$Arch" -ForegroundColor Yellow
     exit 1
 }
 
