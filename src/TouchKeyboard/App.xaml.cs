@@ -151,6 +151,9 @@ public partial class App : Application
             return;
         }
 
+        // シャットダウンを妨げているアプリとして出さない（ProcessShutdown 参照）。
+        ProcessShutdown.DoNotBlock();
+
         // INPUT 構造体のレイアウト誤りは SendInput を黙って失敗させ、
         // 原因の分かりにくい不具合になる。起動時に検出する。
         KeySender.VerifyLayout();
@@ -579,8 +582,20 @@ public partial class App : Application
         switch (msg)
         {
             // サインアウト・シャットダウン。ここで確保領域を返さないと縮んだまま残る。
+            //
+            // 後片付けだけで終わらせず、プロセスも落とす。キーボードのウィンドウは
+            // 隠している間もクロークで残しており、OS からは表示中のウィンドウに見える。
+            // 残っていると「このアプリがシャットダウンを妨げています」に出てしまう。
+            // 先に本当に隠し、後片付け（監視の解除など時間のかかるものを含む）が
+            // 返ってこなくても Terminate の見張りが落とす。
             case WM_ENDSESSION:
-                if (wParam != 0) Teardown();
+                if (wParam != 0)
+                {
+                    TraceLog.Write("セッション終了。後片付けをして終了する");
+                    _window.HideForShutdown();
+                    Terminate();
+                }
+
                 break;
 
             case WM_SETTINGCHANGE:

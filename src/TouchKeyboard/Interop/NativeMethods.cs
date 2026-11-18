@@ -413,6 +413,23 @@ internal static class NativeMethods
     internal static extern bool QueryFullProcessImageNameW(
         nint process, uint flags, System.Text.StringBuilder buffer, ref int size);
 
+    // ------------------------------------------------------------------
+    // シャットダウン
+    // ------------------------------------------------------------------
+
+    /// <summary>シャットダウン時の終了順の既定値。アプリケーション向けの範囲（0x100〜0x3FF）の中ほど。</summary>
+    internal const uint SHUTDOWN_LEVEL_DEFAULT = 0x280;
+
+    /// <summary>
+    /// SHUTDOWN_NORETRY。終了に時間がかかっても「このアプリがシャットダウンを妨げています」の
+    /// 画面に出さず、そのまま終了させる。
+    /// </summary>
+    internal const uint SHUTDOWN_NORETRY = 0x00000001;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetProcessShutdownParameters(uint level, uint flags);
+
     [DllImport("user32.dll")]
     internal static extern nint GetAncestor(nint hWnd, uint gaFlags);
 

@@ -1753,6 +1753,25 @@ public sealed partial class KeyboardWindow : Window
     // ------------------------------------------------------------------
 
     /// <summary>
+    /// シャットダウンの前に、ウィンドウを本当に隠す。
+    ///
+    /// 普段はクロークで出し入れしており、隠している間も OS からは表示中の
+    /// ウィンドウに見える。そのままだと、シャットダウンを妨げているアプリとして
+    /// 一覧に出てしまう。終了の直前なので、描画を止めても困らない。
+    /// </summary>
+    public void HideForShutdown()
+    {
+        try
+        {
+            AppWindow.Hide();
+        }
+        catch (Exception)
+        {
+            // 隠せなくても後片付けと終了は続ける。
+        }
+    }
+
+    /// <summary>
     /// ABM_REMOVE を確実に通す。呼ばずに終了すると他アプリの作業領域が縮んだまま残る。
     /// </summary>
     public void Teardown()
