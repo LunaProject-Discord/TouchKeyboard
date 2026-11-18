@@ -140,6 +140,33 @@ public sealed partial class KeyboardWindow
         var bar = AppWindow.TitleBar;
         var presenter = AppWindow.Presenter as OverlappedPresenter;
 
+        // 枠の構成は、画面端と浮かせた状態が入れ替わるときだけ組み直す。
+        //
+        // 表示のたびに通るため、同じ状態で組み直すと表示中のウィンドウの枠が
+        // 付いては外れる。SetBorderAndTitleBar は WS_DLGFRAME を残し、それを
+        // RemoveFrame が外すので、そのつど中身の大きさが一瞬変わって戻り、
+        // キーが描き直されてちらつく。
+        //
+        // 同じ状態なら、外れたスタイルを直すだけにする。どちらも変わりが無ければ
+        // 何もしないので、枠の再計算は走らない。
+        if (_chromeFloating == IsFloating)
+        {
+            EnsureNoActivate();
+
+            if (!IsFloating)
+            {
+                WindowStyles.RemoveFrame(_hwnd);
+                return;
+            }
+
+            // ボタンの色は明暗に従う。枠には触れないので、塗り直しても再計算は走らない。
+            bar.ButtonForegroundColor = _theme.IsDark ? Colors.White : Colors.Black;
+            bar.ButtonInactiveForegroundColor = bar.ButtonForegroundColor;
+            return;
+        }
+
+        _chromeFloating = IsFloating;
+
         if (!IsFloating)
         {
             bar.ExtendsContentIntoTitleBar = false;
@@ -207,6 +234,11 @@ public sealed partial class KeyboardWindow
     }
 
     private bool _dragRectsWired;
+
+    /// <summary>
+    /// 枠をどちらの状態で組んだか。浮かせているなら true。まだ組んでいなければ null。
+    /// </summary>
+    private bool? _chromeFloating;
 
     /// <summary>
     /// 掴んで動かせる範囲をシステムに伝える。
