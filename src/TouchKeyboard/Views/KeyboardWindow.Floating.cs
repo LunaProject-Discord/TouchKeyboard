@@ -5,6 +5,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using TouchKeyboard.Diagnostics;
 using TouchKeyboard.Interop;
 using TouchKeyboard.Layout;
 using TouchKeyboard.Settings;
@@ -377,7 +378,7 @@ public sealed partial class KeyboardWindow
             if (!IsFloating) return;
 
             ((UIElement)sender).CapturePointer(e.Pointer);
-            BeginMove(e.GetCurrentPoint(Shell).Position);
+            BeginMove(e.Pointer, e.GetCurrentPoint(Shell).Position);
             e.Handled = true;
         };
 
@@ -412,10 +413,33 @@ public sealed partial class KeyboardWindow
         });
     }
 
+    private bool _moving;
+
+    /// <summary>動かしている指・ペン・マウス。画面上の位置を読み直すのに使う。</summary>
+    private uint _movePointerId;
+    private bool _moveIsMouse;
+
+    /// <summary>画面上の位置で追えているか。読めなければウィンドウ内の座標で追う。</summary>
+    private bool _moveByScreen;
+
+    /// <summary>
+    /// 生の入力（Raw Input）の位置で追っているか。指とペンで使う（<see cref="OnRawContact"/>）。
+    /// 最初の報告で掴んだ点を決めるまでは false。
+    /// </summary>
+    private bool _moveByRaw;
+
+    /// <summary>掴んだ点の、ウィンドウの左上からの距離。物理ピクセル。</summary>
+    private int _moveOffsetX;
+    private int _moveOffsetY;
+
+    /// <summary>最後に置いた位置。同じ位置へ置き直さないために持つ。</summary>
+    private int _moveLastX;
+    private int _moveLastY;
+
+    // 以下は画面上の位置が読めなかったときの代わりの経路で使う。
+
     /// <summary>掴んだ位置。ウィンドウ内での相対位置を保つために覚える。</summary>
     private Windows.Foundation.Point _moveGrab;
-
-    private bool _moving;
 
     /// <summary>移動しきれなかった端数。次の回に持ち越す。</summary>
     private double _moveLeftoverX;
@@ -424,9 +448,23 @@ public sealed partial class KeyboardWindow
     /// <summary>掴んだ時点の表示倍率。移動の間は変わらないので覚えておく。</summary>
     private double _moveScale = 1.0;
 
-    private void BeginMove(Windows.Foundation.Point pointerInWindow)
+    private void BeginMove(Microsoft.UI.Xaml.Input.Pointer pointer, Windows.Foundation.Point pointerInWindow)
     {
         _moving = true;
+        _movePointerId = pointer.PointerId;
+        _moveIsMouse = pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse;
+
+        var position = AppWindow.Position;
+        _moveLastX = position.X;
+        _moveLastY = position.Y;
+
+        _moveByScreen = PointerScreen.TryGet(_movePointerId, _moveIsMouse, out var x, out var y);
+        _moveOffsetX = x - position.X;
+        _moveOffsetY = y - position.Y;
+        _moveByRaw = false;
+
+        TraceLog.Write($"移動開始  画面座標で追う={_moveByScreen} マウス={_moveIsMouse}");
+
         _moveGrab = pointerInWindow;
         _moveLeftoverX = 0;
         _moveLeftoverY = 0;
@@ -438,16 +476,30 @@ public sealed partial class KeyboardWindow
     /// <summary>
     /// 掴んだ点がそのまま指の下に来るように動かす。
     ///
-    /// ウィンドウが動くと同じ指の位置でもウィンドウ内の座標が変わる。
-    /// 掴んだ位置との差分を足していけば、その分だけ追従する。
-    ///
-    /// 端数は切り捨てずに持ち越す。捨てると、ゆっくり動かしたときに
-    /// 差分が 1px に届かない回が続き、溜まってから跳ねる。これが揺れて見える。
+    /// 指の位置は画面上の座標で読む（PointerScreen）。通知が渡すウィンドウ内の座標を
+    /// 使っていたときは、なめらかに動かなかった（利用者の報告：「フローティング
+    /// キーボードをドラッグするとなめらかに動きません」）。ウィンドウを動かした直後の
+    /// 通知は、動かす前と後のどちらのウィンドウを基準にしているかが揃わず、
+    /// 動かした量が次の読み取りに跳ね返って行き過ぎと戻りを繰り返していた。
+    /// 動かす回数を 1 フレームに 1 回へまとめる対処も試したが、跳ね返りが
+    /// 大きくなって悪化した。画面上の座標はウィンドウの位置に左右されない。
     /// </summary>
     private void UpdateMove(Windows.Foundation.Point pointerInWindow)
     {
         if (!_moving) return;
 
+        if (_moveByScreen && PointerScreen.TryGet(_movePointerId, _moveIsMouse, out var x, out var y))
+        {
+            MoveWindowTo(x - _moveOffsetX, y - _moveOffsetY);
+            return;
+        }
+
+        // 指とペンは生の入力で動かしている（OnRawContact）。ここでは動かさない。
+        if (_moveByRaw) return;
+
+        // 画面上の位置が読めなかったときの代わり。ウィンドウ内の座標の差分を足していく。
+        // 端数は切り捨てずに持ち越す。捨てると、ゆっくり動かしたときに
+        // 差分が 1px に届かない回が続き、溜まってから跳ねる。
         var dx = ((pointerInWindow.X - _moveGrab.X) * _moveScale) + _moveLeftoverX;
         var dy = ((pointerInWindow.Y - _moveGrab.Y) * _moveScale) + _moveLeftoverY;
 
@@ -460,13 +512,64 @@ public sealed partial class KeyboardWindow
         if (stepX == 0 && stepY == 0) return;
 
         var position = AppWindow.Position;
-        AppWindow.Move(new PointInt32(position.X + stepX, position.Y + stepY));
+        MoveWindowTo(position.X + stepX, position.Y + stepY);
+    }
+
+    /// <summary>
+    /// 位置だけを動かす。
+    ///
+    /// AppWindow.Move は使わない。位置変更の通知を同期で回すぶん重く、
+    /// 指の報告のたびに呼ぶと追従が遅れる。大きさと重なり順は変えない。
+    /// </summary>
+    private void MoveWindowTo(int x, int y)
+    {
+        if (x == _moveLastX && y == _moveLastY) return;
+
+        _moveLastX = x;
+        _moveLastY = y;
+
+        NativeMethods.SetWindowPos(
+            _hwnd, 0, x, y, 0, 0,
+            NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
+    }
+
+    /// <summary>
+    /// 指やペンの生の入力（Raw Input）で触れている位置が届いた。画面上の座標、物理ピクセル。
+    /// App が WM_INPUT から呼ぶ。
+    ///
+    /// 指とペンでは、XAML の通知が渡す Pointer.PointerId で GetPointerInfo を引いても
+    /// 位置が読めなかった（実機の trace.log で、マウスだけ「画面座標で追う=True」）。
+    /// WinUI のポインタの番号は Win32 のものと一致しないとみられる。生の入力なら
+    /// WinUI を通らずに画面上の位置が届く。
+    ///
+    /// 最初の報告で、そのときのウィンドウの位置との差（掴んだ点）を決める。
+    /// 以後はその差を保って動かすので、生の入力の目盛りを画面に当てはめるときの
+    /// わずかなずれ（TouchDigitizer.ToScreen）は、掴んだ点のずれにはならない。
+    /// </summary>
+    public void OnRawContact(int x, int y)
+    {
+        if (!_moving || _moveIsMouse || _moveByScreen) return;
+
+        if (!_moveByRaw)
+        {
+            // ウィンドウはまだ動かしていない。いまの位置との差がそのまま掴んだ点になる。
+            var position = AppWindow.Position;
+            _moveOffsetX = x - position.X;
+            _moveOffsetY = y - position.Y;
+            _moveByRaw = true;
+
+            TraceLog.Write("  生の入力で追う");
+            return;
+        }
+
+        MoveWindowTo(x - _moveOffsetX, y - _moveOffsetY);
     }
 
     private void EndMove()
     {
         if (!_moving) return;
         _moving = false;
+        _moveByRaw = false;
 
         RememberFloatingBounds();
     }

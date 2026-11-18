@@ -394,6 +394,39 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     internal static extern nint WindowFromPoint(POINT point);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetCursorPos(out POINT point);
+
+    /// <summary>POINTER_INFO。ポインタ（指・ペン・マウス）1 本の状態。</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct POINTER_INFO
+    {
+        public uint pointerType;
+        public uint pointerId;
+        public uint frameId;
+        public uint pointerFlags;
+        public nint sourceDevice;
+        public nint hwndTarget;
+
+        /// <summary>画面上の位置。物理ピクセル。</summary>
+        public POINT ptPixelLocation;
+
+        public POINT ptHimetricLocation;
+        public POINT ptPixelLocationRaw;
+        public POINT ptHimetricLocationRaw;
+        public uint dwTime;
+        public uint historyCount;
+        public int InputData;
+        public uint dwKeyStates;
+        public ulong PerformanceCount;
+        public int ButtonChangeType;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetPointerInfo(uint pointerId, out POINTER_INFO pointerInfo);
+
     // ------------------------------------------------------------------
     // プロセスの問い合わせ
     // ------------------------------------------------------------------

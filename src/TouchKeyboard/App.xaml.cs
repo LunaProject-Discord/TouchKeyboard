@@ -508,6 +508,10 @@ public partial class App : Application
             // ホバーも数える。ペン先が浮いている間に手のひらが先に触れることがある。
             if (touch is { IsPen: true }) _lastPenActivityAt = Environment.TickCount64;
 
+            // 浮かせたキーボードを指やペンで動かしている間は、画面上の位置をそのまま渡す。
+            // XAML の通知からは指やペンの画面上の位置が読めない（KeyboardWindow.OnRawContact 参照）。
+            if (touch is { IsTouching: true, Point: { } contact }) _window.OnRawContact(contact.X, contact.Y);
+
             // マウス／物理キーから持ち替えたかは、NotifyTouch で LastClickWasMouse が
             // 書き換わる前の値を見る。
             var wasOtherSource = _pointer?.LastClickWasMouse == true || _lastInputWasPhysicalKey;
